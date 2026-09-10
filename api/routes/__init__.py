@@ -1,0 +1,4 @@
+"""
+Rotas da API FastAPI.
+"""
+

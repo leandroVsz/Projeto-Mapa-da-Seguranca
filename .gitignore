@@ -1,0 +1,32 @@
+# Ambientes Virtuais Python
+venv/
+.venv/
+env/
+ENV/
+
+# Python Cache e Compilação
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Node.js e Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+.npm
+*.log
+
+# Arquivos de Sistema e IDEs
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Dados e Variáveis Locais
+.env
+backend/data/raw/*.csv
+!backend/data/raw/README.md
+

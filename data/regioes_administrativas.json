@@ -1,0 +1,131 @@
+{
+  "regioes": [
+    {
+      "id": "plano_piloto",
+      "nome": "Plano Piloto",
+      "ra_numero": 1,
+      "latitude": -15.7942,
+      "longitude": -47.8822,
+      "zoom": 13,
+      "populacao_estimada": 220000
+    },
+    {
+      "id": "ceilandia",
+      "nome": "Ceilândia",
+      "ra_numero": 9,
+      "latitude": -15.8202,
+      "longitude": -48.1105,
+      "zoom": 13,
+      "populacao_estimada": 432000
+    },
+    {
+      "id": "taguatinga",
+      "nome": "Taguatinga",
+      "ra_numero": 3,
+      "latitude": -15.8335,
+      "longitude": -48.0567,
+      "zoom": 13,
+      "populacao_estimada": 222000
+    },
+    {
+      "id": "samambaia",
+      "nome": "Samambaia",
+      "ra_numero": 12,
+      "latitude": -15.8778,
+      "longitude": -48.0844,
+      "zoom": 13,
+      "populacao_estimada": 254000
+    },
+    {
+      "id": "gama",
+      "nome": "Gama",
+      "ra_numero": 2,
+      "latitude": -16.0180,
+      "longitude": -48.0647,
+      "zoom": 13,
+      "populacao_estimada": 137000
+    },
+    {
+      "id": "guara",
+      "nome": "Guará",
+      "ra_numero": 10,
+      "latitude": -15.8239,
+      "longitude": -47.9786,
+      "zoom": 13,
+      "populacao_estimada": 133000
+    },
+    {
+      "id": "aguas_claras",
+      "nome": "Águas Claras",
+      "ra_numero": 20,
+      "latitude": -15.8398,
+      "longitude": -48.0267,
+      "zoom": 14,
+      "populacao_estimada": 160000
+    },
+    {
+      "id": "santa_maria",
+      "nome": "Santa Maria",
+      "ra_numero": 13,
+      "latitude": -16.0152,
+      "longitude": -47.9944,
+      "zoom": 13,
+      "populacao_estimada": 130000
+    },
+    {
+      "id": "planaltina",
+      "nome": "Planaltina",
+      "ra_numero": 6,
+      "latitude": -15.6178,
+      "longitude": -47.6534,
+      "zoom": 13,
+      "populacao_estimada": 190000
+    },
+    {
+      "id": "sobradinho",
+      "nome": "Sobradinho",
+      "ra_numero": 5,
+      "latitude": -15.6535,
+      "longitude": -47.7889,
+      "zoom": 13,
+      "populacao_estimada": 100000
+    },
+    {
+      "id": "recanto_das_emas",
+      "nome": "Recanto das Emas",
+      "ra_numero": 15,
+      "latitude": -15.9080,
+      "longitude": -48.0700,
+      "zoom": 13,
+      "populacao_estimada": 150000
+    },
+    {
+      "id": "sao_sebastiao",
+      "nome": "São Sebastião",
+      "ra_numero": 14,
+      "latitude": -15.9069,
+      "longitude": -47.7717,
+      "zoom": 13,
+      "populacao_estimada": 115000
+    },
+    {
+      "id": "paranoa",
+      "nome": "Paranoá",
+      "ra_numero": 7,
+      "latitude": -15.7725,
+      "longitude": -47.7783,
+      "zoom": 13,
+      "populacao_estimada": 70000
+    },
+    {
+      "id": "vicente_pires",
+      "nome": "Vicente Pires",
+      "ra_numero": 30,
+      "latitude": -15.8039,
+      "longitude": -48.0267,
+      "zoom": 13,
+      "populacao_estimada": 90000
+    }
+  ]
+}
+
