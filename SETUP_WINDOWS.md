@@ -65,7 +65,36 @@ python run.py
 
 ---
 
-## 5. Resolução de Problemas Comuns
+## 5. Banco de Dados Real (Opcional): PostgreSQL + PostGIS via Docker
+
+Por padrão, o sistema roda com dados de demonstração. Para usar os **dados reais da SSP-DF** com o mapa coropleto, é preciso subir o banco:
+
+1. **Instale o Docker Desktop**: [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
+   (após instalar, reinicie o computador e abra o Docker Desktop uma vez).
+
+2. **Suba o banco** (na pasta do projeto):
+   ```cmd
+   docker compose up -d
+   ```
+   Na primeira execução as tabelas são criadas automaticamente.
+
+3. **Carregue os dados reais**:
+   ```cmd
+   venv\Scripts\activate.bat
+   python -m db.load_csv
+   python -m db.smoke_test
+   ```
+
+4. **Reinicie a API** (`python run.py api`) — o painel passará a exibir o mapa coropleto por RA e o filtro de Eixo Indicador.
+
+> [!TIP]
+> Sem o Docker/banco no ar, tudo continua funcionando no modo fallback (dados simulados). O banco é necessário apenas para os dados reais.
+
+---
+
+## 6. Resolução de Problemas Comuns
+
+---
 
 ### Erro: "A execução de scripts foi desabilitada neste sistema" (PowerShell)
 Se estiver utilizando o PowerShell e o comando de ativação do venv for bloqueado:

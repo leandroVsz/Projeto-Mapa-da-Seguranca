@@ -30,3 +30,6 @@ Thumbs.db
 backend/data/raw/*.csv
 !backend/data/raw/README.md
 
+# GeoJSON baixado na carga (regenerável via db/load_csv.py)
+data/geo/ra_df.geojson
+

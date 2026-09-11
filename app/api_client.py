@@ -64,15 +64,52 @@ class ApiClient:
                 pass
         return self._fallback_service.get_opcoes_filtros()
 
+    def get_coropleto(
+        self,
+        regioes: Optional[List[str]] = None,
+        naturezas: Optional[List[str]] = None,
+        eixos: Optional[List[str]] = None,
+        anos: Optional[List[int]] = None,
+    ) -> Dict[str, Any]:
+        """Busca intensidade por RA para o mapa coropleto."""
+        if self.is_online():
+            try:
+                params = {}
+                if regioes:
+                    params["regiao"] = regioes
+                if naturezas:
+                    params["natureza"] = naturezas
+                if eixos:
+                    params["eixo"] = eixos
+                if anos:
+                    params["ano"] = anos
+                res = requests.get(f"{self.base_url}/api/coropleto", params=params, timeout=4.0)
+                if res.status_code == 200:
+                    return res.json()
+            except Exception:
+                pass
+        # Fallback: conta ocorrências simuladas por RA
+        df = self._fallback_service.filtrar_ocorrencias(
+            regioes=regioes, naturezas=naturezas, anos=anos,
+        )
+        return {
+            "online": False,
+            "regioes": [
+                {"nome": nome, "total": int(total)}
+                for nome, total in df["regiao_administrativa"].value_counts().items()
+            ],
+        }
+
     def get_heatmap(
         self,
         regioes: Optional[List[str]] = None,
         naturezas: Optional[List[str]] = None,
+        eixos: Optional[List[str]] = None,
         anos: Optional[List[int]] = None,
         periodos: Optional[List[str]] = None,
         ponderar: bool = True,
     ) -> List[List[float]]:
-        """Busca pontos do mapa de calor."""
+        """Busca pontos do mapa de calor (centroides ponderados)."""
         if self.is_online():
             try:
                 params = {"ponderar": ponderar}
@@ -80,6 +117,8 @@ class ApiClient:
                     params["regiao"] = regioes
                 if naturezas:
                     params["natureza"] = naturezas
+                if eixos:
+                    params["eixo"] = eixos
                 if anos:
                     params["ano"] = anos
                 if periodos:
@@ -102,6 +141,7 @@ class ApiClient:
         self,
         regioes: Optional[List[str]] = None,
         naturezas: Optional[List[str]] = None,
+        eixos: Optional[List[str]] = None,
         anos: Optional[List[int]] = None,
         periodos: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
@@ -113,6 +153,8 @@ class ApiClient:
                     params["regiao"] = regioes
                 if naturezas:
                     params["natureza"] = naturezas
+                if eixos:
+                    params["eixo"] = eixos
                 if anos:
                     params["ano"] = anos
                 if periodos:
@@ -134,6 +176,7 @@ class ApiClient:
         self,
         regioes: Optional[List[str]] = None,
         naturezas: Optional[List[str]] = None,
+        eixos: Optional[List[str]] = None,
         anos: Optional[List[int]] = None,
         periodos: Optional[List[str]] = None,
         busca: Optional[str] = None,
@@ -147,6 +190,8 @@ class ApiClient:
                     params["regiao"] = regioes
                 if naturezas:
                     params["natureza"] = naturezas
+                if eixos:
+                    params["eixo"] = eixos
                 if anos:
                     params["ano"] = anos
                 if periodos:

@@ -15,6 +15,7 @@ if str(root_dir) not in sys.path:
 from api.routes.regioes import router as regioes_router
 from api.routes.ocorrencias import router as ocorrencias_router
 from api.services.data_service import DataService
+from api.services.db_service import DbService
 
 app = FastAPI(
     title="API - Mapa da Segurança do Distrito Federal",
@@ -42,6 +43,7 @@ app.include_router(regioes_router)
 app.include_router(ocorrencias_router)
 
 data_service = DataService()
+db_service = DbService()
 
 
 @app.get("/", tags=["Status"])
@@ -57,12 +59,21 @@ def root():
 
 @app.get("/api/health", tags=["Status"])
 def health():
-    df = data_service.carregar_dados()
-    return {
+    # Prioriza o banco PostgreSQL; reporta fallback se estiver offline
+    db = db_service.health()
+    resposta = {
         "status": "healthy",
-        "total_registros_ativos": len(df),
-        "total_regioes_mapeadas": len(data_service.get_regioes()),
+        "banco": db,
     }
+    if db.get("db_online"):
+        resposta["total_registros_ativos"] = db["total_registros"]
+        resposta["total_regioes_mapeadas"] = db["total_regioes"]
+    else:
+        df = data_service.carregar_dados()
+        resposta["total_registros_ativos"] = len(df)
+        resposta["total_regioes_mapeadas"] = len(data_service.get_regioes())
+        resposta["aviso"] = "PostgreSQL offline — servindo fallback CSV/simulado"
+    return resposta
 
 
 if __name__ == "__main__":

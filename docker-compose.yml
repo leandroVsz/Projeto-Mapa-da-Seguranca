@@ -1,0 +1,23 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: crimemap_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-crimemap}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-crimemap}
+      POSTGRES_DB: ${POSTGRES_DB:-crimemap}
+    ports:
+      - "5432:5432"
+    volumes:
+      - crimemap_pgdata:/var/lib/postgresql/data
+      # Aplica o schema automaticamente na primeira inicialização
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-crimemap} -d ${POSTGRES_DB:-crimemap}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  crimemap_pgdata:

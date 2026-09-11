@@ -29,11 +29,21 @@ def render_charts(stats: dict):
 
     c3, c4 = st.columns(2)
     with c3:
-        st.markdown("##### 🕒 Ocorrências por Período do Dia")
         por_periodo = stats.get("por_periodo", {})
+        por_mes = stats.get("por_mes", {})
         if por_periodo:
-            s_per = pd.Series(por_periodo)
-            st.bar_chart(s_per, color="#f59e0b")
+            st.markdown("##### 🕒 Ocorrências por Período do Dia")
+            st.bar_chart(pd.Series(por_periodo), color="#f59e0b")
+        elif por_mes:
+            st.markdown("##### 📅 Ocorrências por Mês (histórico agregado)")
+            meses = ["jan", "fev", "mar", "abr", "mai", "jun",
+                     "jul", "ago", "set", "out", "nov", "dez"]
+            # chaves voltam do JSON como strings; normaliza para int
+            serie = pd.Series({
+                meses[int(m) - 1]: q
+                for m, q in sorted(por_mes.items(), key=lambda kv: int(kv[0]))
+            })
+            st.bar_chart(serie, color="#f59e0b")
 
     with c4:
         st.markdown("##### 📈 Evolução Histórica Anual")
