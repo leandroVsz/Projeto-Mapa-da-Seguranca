@@ -107,6 +107,64 @@ python -m db.load_csv
 python -m db.smoke_test
 ```
 
+---
+
+## 🔐 Autenticação e Usuários
+
+O sistema conta com login/registro de usuários armazenados **no mesmo banco PostgreSQL, em um schema separado chamado `auth`** (isolamento lógico sem precisar de segunda instância):
+
+| Tabela | Papel |
+|---|---|
+| `auth.usuario` | E-mail (único), nome, hash bcrypt da senha, papel (admin/usuario), status, lockout anti-força-bruta, token de reset |
+| `auth.sessao_usuario` | Sessões "manter conectado" — guarda apenas o SHA-256 do token opaco |
+| `auth.log_acesso` | Auditoria: logins, falhas, bloqueios, registros e resets |
+
+### Segurança implementada
+
+- **bcrypt (cost 12)** com sal aleatório por usuário — senha nunca é armazenada nem logada
+- **Mensagens de erro genéricas** (não revela se um e-mail existe)
+- **Lockout progressivo**: 5 falhas ⇒ conta bloqueada por 15 minutos
+- **Tokens de sessão opacos** (`secrets.token_urlsafe`), guardados apenas como SHA-256 no banco, com revogação
+- **Reset de senha por token de uso único** (30 min), revogando todas as sessões
+- **Auditoria completa** de acessos em `auth.log_acesso`
+
+### Como usar
+
+**No Streamlit** — aba **"👤 Conta & Acesso"**: login, registro, troca de senha e (para admins) gestão de usuários. Por padrão o painel é aberto a visitantes; para exigir login, defina no `.env`:
+
+```env
+AUTH_REQUIRED=true
+```
+
+**Pela API** — endpoints documentados no Swagger (`/docs`), autenticando com o header `X-Auth-Token`:
+
+```
+POST /api/auth/registro          -> cria conta e já devolve token
+POST /api/auth/login             -> autentica (e-mail, senha, lembrar)
+POST /api/auth/logout            -> encerra a sessão
+GET  /api/auth/eu                -> dados do usuário autenticado
+POST /api/auth/trocar-senha      -> troca a própria senha
+POST /api/auth/reset/solicitar   -> gera token de redefinição (30 min)
+POST /api/auth/reset/confirmar   -> redefine a senha com o token
+GET  /api/auth/health            -> status do subsistema de autenticação
+```
+
+**Pela linha de comando** (requer banco no ar):
+
+```bash
+# Aplicar/verificar o schema auth (idempotente)
+python -m db.auth_admin schema
+
+# Criar o primeiro administrador (senha pedida sem eco)
+python -m db.auth_admin criar --nome "Admin UCB" --email admin@ucb.br --admin
+
+# Outros comandos: listar | promover | rebaixar | ativar | desativar | reset-senha
+python -m db.auth_admin listar
+
+# Validar todo o ciclo de autenticação (registro, lockout, sessões, reset...)
+python -m db.auth_smoke_test
+```
+
 > Requer **Docker Desktop** (Windows/Mac) ou Docker Engine (Linux). Sem o banco no ar, o sistema continua funcionando no modo fallback (dados simulados), apenas sem o mapa coropleto e o filtro de eixos.
 
 ### Modelo de dados
