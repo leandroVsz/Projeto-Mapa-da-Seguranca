@@ -8,13 +8,13 @@ Projeto desenvolvido para a disciplina de **Soluções Computacionais (8º Semes
 
 ## 🏛️ Arquitetura do Sistema (100% Python)
 
-O sistema foi desenhado com foco em **separação de responsabilidades**, facilidade de execução e valorização acadêmica:
+O sistema foi desenhado com foco em **separação de responsabilidades** e facilidade de execução:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                   FRONTEND WEB (Streamlit Dashboard)                   │
-│  - Mapa de Calor Geoespacial 2D (PyDeck Heatmap) e 3D (Hexágonos)      │
-│  - Filtros: Regiões Administrativas (RAs), Crimes, Períodos e Anos     │
+│  - Mapa Coropleto por RA (polígonos GeoJSON) + Heatmap 2D e 3D         │
+│  - Filtros: RAs, Eixos Indicadores, Crimes, Períodos e Anos            │
 │  - Cards de KPIs e Indicadores de Segurança Pública                    │
 │  - Gráficos estatísticos e tendências temporais                        │
 │  - Tabela detalhada de ocorrências com busca e exportação CSV          │
@@ -25,17 +25,25 @@ O sistema foi desenhado com foco em **separação de responsabilidades**, facili
 │                        BACKEND (API REST FastAPI)                      │
 │                                                                        │
 │  - Endpoints REST documentados automaticamente no Swagger (/docs)      │
-│  - Cálculo de intensidades e matriz geoespacial de calor               │
-│  - Agregações estatísticas e consultas filtradas                       │
-│  - Pipeline ETL para consolidar anos e cidades da SSP-DF               │
-│  - Fallback local transparente caso a API esteja desligada             │
+│  - Agregações estatísticas via SQL (GROUP BY no PostgreSQL)            │
+│  - Coropleto, heatmap ponderado e séries mensais reais                 │
+│  - Pipeline ETL: CSV consolidado → PostgreSQL/PostGIS                  │
+│  - Fallback transparente para CSV/simulado se o banco estiver offline  │
 └───────────────────────────────────┬────────────────────────────────────┘
-                                    │ Leitura / Gravação
+                                    │ SQL (SQLAlchemy + PostGIS)
+┌───────────────────────────────────▼────────────────────────────────────┐
+│              BANCO DE DADOS (PostgreSQL + PostGIS via Docker)          │
+│  - regiao_administrativa: RAs com contorno (polígono) e centroide      │
+│  - tipo_crime: naturezas + eixo indicador (padrão SSP-DF)              │
+│  - ocorrencia_mensal: fato com contagens por RA/crime/ano/mês          │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ Carga (db/load_csv.py)
 ┌───────────────────────────────────▼────────────────────────────────────┐
 │                     CAMADA DE DADOS UNIFICADA (data/)                  │
-│  - Base de ocorrências simuladas (padrão SSP-DF)                       │
-│  - Metadados geográficos das 14 principais RAs do DF                   │
-│  - Diretório raw/ para novos CSVs anuais baixados                      │
+│  - CSV consolidado da SSP-DF (api/services/output/)                    │
+│  - GeoJSON dos contornos das RAs (data/geo/)                           │
+│  - Base de ocorrências simuladas (fallback offline)                    │
+│  - Diretório raw/ para planilhas anuais baixadas                       │
 │  - Diretório processed/ para arquivos consolidados                     │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -78,6 +86,38 @@ python run.py app
 # Apenas o servidor Backend API FastAPI:
 python run.py api
 ```
+
+---
+
+## 🗄️ Banco de Dados (PostgreSQL + PostGIS)
+
+O backend consulta um banco PostgreSQL com extensão PostGIS, subido via Docker:
+
+```bash
+# 1. Subir o banco (na primeira vez cria as tabelas automaticamente):
+docker compose up -d
+
+# 2. Configurar conexão (opcional — o padrão já funciona):
+cp .env.example .env
+
+# 3. Carregar os dados reais (CSV consolidado + contornos das RAs):
+python -m db.load_csv
+
+# 4. Validar a carga (totais do banco × CSV):
+python -m db.smoke_test
+```
+
+> Requer **Docker Desktop** (Windows/Mac) ou Docker Engine (Linux). Sem o banco no ar, o sistema continua funcionando no modo fallback (dados simulados), apenas sem o mapa coropleto e o filtro de eixos.
+
+### Modelo de dados
+
+| Tabela | Papel | Colunas principais |
+|---|---|---|
+| `regiao_administrativa` | Dimensão geográfica | `id`, `nome` (único), `codigo` (único), `contorno` (GEOMETRY MultiPolygon), `centroide` (GEOMETRY Point) |
+| `tipo_crime` | Dimensão de crimes | `id`, `nome` (único), `eixo_indicador`, `descricao` |
+| `ocorrencia_mensal` | Fato (contagens) | `regiao_id` (FK), `tipo_crime_id` (FK), `ano`, `mes`, `tipo_registro`, `quantidade` — único por (RA, crime, ano, mês, tipo) |
+
+A carga (`db/load_csv.py`) é **idempotente** (upsert): pode ser rodada sempre que um novo CSV consolidado for gerado, sem duplicar registros.
 
 ---
 
@@ -125,12 +165,14 @@ Quando o grupo começar a utilizar os **dados reais baixados da SSP-DF** (onde c
 
 | Método | Rota | Descrição |
 | :--- | :--- | :--- |
-| `GET` | `/api/health` | Status de integridade do servidor e total de registros |
-| `GET` | `/api/regioes` | Lista de RAs e coordenadas centrais de cada região |
-| `GET` | `/api/filtros` | Opções disponíveis de filtros (RAs, crimes, anos, períodos) |
-| `GET` | `/api/heatmap` | Matriz de coordenadas e intensidade `[lat, lon, peso]` |
-| `GET` | `/api/ocorrencias` | Listagem detalhada de ocorrências com busca textual |
-| `GET` | `/api/stats` | Indicadores-chave (KPIs) e resumos estatísticos |
+| `GET` | `/api/health` | Status do servidor + do banco PostgreSQL (com fallback) |
+| `GET` | `/api/regioes` | RAs com contorno GeoJSON, código e centroide |
+| `GET` | `/api/filtros` | Opções de filtros: RAs, crimes, **eixos indicadores**, anos |
+| `GET` | `/api/heatmap` | Matriz `[lat, lon, peso]` (centroides ponderados) |
+| `GET` | `/api/coropleto` | Intensidade por RA `{nome, total}` para o mapa coropleto |
+| `GET` | `/api/ocorrencias` | Listagem agregada RA/crime/ano/mês com busca textual |
+| `GET` | `/api/stats` | Indicadores-chave (KPIs) e séries por ano/mês |
 | `POST`| `/api/consolidar` | Executa a unificação de arquivos brutos anuais (ETL) |
+| `POST`| `/api/carga-db` | Carrega o CSV consolidado + contornos no PostgreSQL |
 
 Documentação interativa Swagger disponível em: **[http://localhost:8000/docs](http://localhost:8000/docs)**.

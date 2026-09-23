@@ -65,6 +65,18 @@ ra_selecionadas = st.sidebar.multiselect(
     placeholder="Todas as regiões do DF",
 )
 
+# Filtro por Eixo Indicador (macro-categoria SSP-DF)
+eixos_disponiveis = opcoes.get("eixos", [])
+eixos_selecionados = st.sidebar.multiselect(
+    "Eixo Indicador",
+    options=eixos_disponiveis,
+    default=[],
+    placeholder="Todos os eixos (C.V.L.I., C.C.P., ...)",
+    disabled=not eixos_disponiveis,
+    help=("Disponível apenas com o banco PostgreSQL conectado."
+          if not eixos_disponiveis else None),
+)
+
 # Filtro por Natureza do Crime
 crimes_selecionados = st.sidebar.multiselect(
     "Natureza da Ocorrência",
@@ -81,22 +93,27 @@ anos_selecionados = st.sidebar.multiselect(
     default=anos_disponiveis,
 )
 
-# Filtro por Período do Dia
-periodos_selecionados = st.sidebar.multiselect(
-    "Período do Dia",
-    options=opcoes.get("periodos", ["Madrugada", "Manhã", "Tarde", "Noite"]),
-    default=opcoes.get("periodos", ["Madrugada", "Manhã", "Tarde", "Noite"]),
-)
+# Filtro por Período do Dia (só faz sentido no fallback simulado)
+periodos_disponiveis = opcoes.get("periodos", [])
+periodos_selecionados = []
+if periodos_disponiveis:
+    periodos_selecionados = st.sidebar.multiselect(
+        "Período do Dia (dados simulados)",
+        options=periodos_disponiveis,
+        default=periodos_disponiveis,
+    )
 
 st.sidebar.divider()
 
-# Configurações do Mapa de Calor
+# Configurações do Mapa
 st.sidebar.subheader("🎨 Configurações do Mapa")
-tipo_camada = st.sidebar.radio(
-    "Tipo de Camada",
-    ["Mapa de Calor (Heatmap 2D)", "Agrupamento 3D (Hexágonos)"],
-    index=0,
+tem_contornos = any(r.get("contorno") for r in (regioes_meta or []))
+opcoes_camada = (
+    ["Coropleto por RA", "Mapa de Calor (Heatmap 2D)", "Agrupamento 3D (Hexágonos)"]
+    if tem_contornos
+    else ["Mapa de Calor (Heatmap 2D)", "Agrupamento 3D (Hexágonos)"]
 )
+tipo_camada = st.sidebar.radio("Tipo de Camada", opcoes_camada, index=0)
 raio_calor = st.sidebar.slider("Raio dos Pontos (metros)", 500, 4000, 1800, step=100)
 ponderar_severidade = st.sidebar.checkbox("Ponderar por Gravidade do Crime", value=True)
 
@@ -106,14 +123,23 @@ ponderar_severidade = st.sidebar.checkbox("Ponderar por Gravidade do Crime", val
 pontos_calor = client.get_heatmap(
     regioes=ra_selecionadas if ra_selecionadas else None,
     naturezas=crimes_selecionados if crimes_selecionados else None,
+    eixos=eixos_selecionados if eixos_selecionados else None,
     anos=anos_selecionados if anos_selecionados else None,
     periodos=periodos_selecionados if periodos_selecionados else None,
     ponderar=ponderar_severidade,
 )
 
+coropleto = client.get_coropleto(
+    regioes=ra_selecionadas if ra_selecionadas else None,
+    naturezas=crimes_selecionados if crimes_selecionados else None,
+    eixos=eixos_selecionados if eixos_selecionados else None,
+    anos=anos_selecionados if anos_selecionados else None,
+)
+
 stats = client.get_stats(
     regioes=ra_selecionadas if ra_selecionadas else None,
     naturezas=crimes_selecionados if crimes_selecionados else None,
+    eixos=eixos_selecionados if eixos_selecionados else None,
     anos=anos_selecionados if anos_selecionados else None,
     periodos=periodos_selecionados if periodos_selecionados else None,
 )
@@ -143,6 +169,8 @@ with tab_mapa:
     render_map(
         pontos_calor=pontos_calor,
         ocorrencias=[],
+        coropleto=coropleto.get("regioes", []),
+        regioes_geo=regioes_meta,
         regiao_selecionada=regiao_foco,
         regioes_meta=regioes_meta,
         tipo_camada=tipo_camada,
@@ -160,6 +188,7 @@ with tab_tabela:
     ocorrencias = client.get_ocorrencias(
         regioes=ra_selecionadas if ra_selecionadas else None,
         naturezas=crimes_selecionados if crimes_selecionados else None,
+        eixos=eixos_selecionados if eixos_selecionados else None,
         anos=anos_selecionados if anos_selecionados else None,
         periodos=periodos_selecionados if periodos_selecionados else None,
         busca=termo if termo else None,
@@ -169,7 +198,7 @@ with tab_tabela:
     if ocorrencias:
         df_tab = pd.DataFrame(ocorrencias)
         colunas_exibir = [
-            c for c in ["id", "regiao_administrativa", "natureza_crime", "data", "hora", "periodo_dia", "logradouro_detalhe", "peso_severidade"]
+            c for c in ["regiao_administrativa", "natureza_crime", "eixo_indicador", "ano", "mes", "quantidade", "tipo_registro", "data", "hora", "periodo_dia", "logradouro_detalhe"]
             if c in df_tab.columns
         ]
         st.dataframe(df_tab[colunas_exibir], use_container_width=True)
@@ -196,13 +225,15 @@ with tab_api:
 
     st.markdown("#### Endpoints Disponíveis:")
     st.code("""
-GET  /api/health       -> Status de integridade e total de registros
-GET  /api/regioes      -> Lista de RAs e coordenadas centrais
-GET  /api/filtros      -> Opções para filtros (crimes, anos, períodos)
-GET  /api/heatmap      -> Matriz [latitude, longitude, peso] para mapa de calor
-GET  /api/ocorrencias  -> Listagem detalhada com busca e filtros
+GET  /api/health       -> Status de integridade (banco PostgreSQL + fallback)
+GET  /api/regioes      -> Lista de RAs com contornos GeoJSON
+GET  /api/filtros      -> Opções para filtros (RAs, crimes, eixos, anos)
+GET  /api/heatmap      -> Matriz [latitude, longitude, peso] (centroides)
+GET  /api/coropleto    -> Intensidade por RA para mapa coropleto
+GET  /api/ocorrencias  -> Listagem agregada RA/crime/mês com busca
 GET  /api/stats        -> Indicadores agregados e KPIs
 POST /api/consolidar   -> Dispara pipeline de ETL dos arquivos brutos
+POST /api/carga-db     -> Carrega CSV consolidado + contornos no PostgreSQL
     """, language="text")
 
     st.info("💡 **Como iniciar a API**: Execute `python run.py api` ou use `run.bat` (opção 2).")
