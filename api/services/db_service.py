@@ -142,16 +142,16 @@ class DbService:
             params: Dict[str, Any] = {}
             where = self._where(regioes, naturezas, eixos, anos, tipo_registro, params)
             rows = s.execute(text(f"""
-                SELECT r.nome, COALESCE(t.total, 0) AS total
-                FROM regiao_administrativa r
+                SELECT ra.nome, COALESCE(agg.total, 0) AS total
+                FROM regiao_administrativa ra
                 LEFT JOIN (
                     SELECT f.regiao_id, SUM(f.quantidade) AS total
                     FROM ocorrencia_mensal f
-                    JOIN regiao_administrativa r2 ON r2.id = f.regiao_id
-                    JOIN tipo_crime tc ON tc.id = f.tipo_crime_id
+                    JOIN regiao_administrativa r ON r.id = f.regiao_id
+                    JOIN tipo_crime t ON t.id = f.tipo_crime_id
                     {where}
                     GROUP BY f.regiao_id
-                ) t ON t.regiao_id = r.id
+                ) agg ON agg.regiao_id = ra.id
                 ORDER BY total DESC
             """), params).all()
         return [{"nome": r[0], "total": int(r[1])} for r in rows]
