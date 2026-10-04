@@ -31,3 +31,7 @@ bcrypt>=4.0.0          # Hash de senha (cost 12) do subsistema de login
 # --- Ingestão de planilhas SSP-DF (data/raw/*.xlsx) ---
 openpyxl>=3.1.0        # Leitura de planilhas .xlsx
 xlrd>=2.0.0            # Leitura de planilhas .xls (arquivos agregados antigos)
+
+# --- Testes (python -m pytest) ---
+pytest>=8.0.0          # Framework de testes unitários (suíte em tests/)
+pytest-cov>=5.0.0      # Medição de cobertura dos testes
