@@ -6,6 +6,7 @@ Atua como cliente da API REST (FastAPI) com suporte a fallback local.
 """
 
 from pathlib import Path
+import os
 import sys
 import streamlit as st
 import pandas as pd
@@ -16,6 +17,14 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from app.api_client import ApiClient
+from app.auth_ui import (
+    render_auth_tab,
+    render_login_gate,
+    init_auth_state,
+    is_logado,
+    usuario_logado,
+    logout,
+)
 from app.components.metrics import render_metrics
 from app.components.map_view import render_map
 from app.components.charts import render_charts
@@ -37,6 +46,14 @@ def get_api_client():
 client = get_api_client()
 
 # ==============================================================================
+# Autenticação (gate opcional via AUTH_REQUIRED=true no .env)
+# ==============================================================================
+AUTH_REQUIRED = os.getenv("AUTH_REQUIRED", "false").strip().lower() in ("1", "true", "yes", "on")
+init_auth_state()
+if not render_login_gate(AUTH_REQUIRED):
+    st.stop()
+
+# ==============================================================================
 # Barra Lateral - Filtros e Configurações
 # ==============================================================================
 st.sidebar.title("🛡️ Mapa da Segurança DF")
@@ -50,6 +67,18 @@ if api_status["online"]:
 else:
     st.sidebar.info("🟡 **Modo Direto Local** (Sem API no ar)")
     st.sidebar.caption("Para subir o backend: `python run.py api`")
+
+st.sidebar.divider()
+
+# Sessão do usuário (login/registro na aba 'Conta & Acesso')
+if is_logado():
+    u = usuario_logado()
+    st.sidebar.success(f"👤 **{u['nome']}**\n\n{u['email']}")
+    if st.sidebar.button("🚪 Sair da conta", use_container_width=True):
+        logout()
+        st.rerun()
+else:
+    st.sidebar.info("👤 **Visitante**\n\nEntre pela aba **Conta & Acesso** abaixo.")
 
 st.sidebar.divider()
 st.sidebar.subheader("🔍 Filtros de Análise")
@@ -157,11 +186,12 @@ st.markdown("---")
 # ==============================================================================
 # Abas de Navegação Principal
 # ==============================================================================
-tab_mapa, tab_graficos, tab_tabela, tab_api = st.tabs([
+tab_mapa, tab_graficos, tab_tabela, tab_api, tab_conta = st.tabs([
     "📍 Mapa Geoespacial",
     "📊 Gráficos & Tendências",
     "📋 Tabela de Ocorrências",
     "🔌 Backend API REST",
+    "👤 Conta & Acesso",
 ])
 
 with tab_mapa:
@@ -225,18 +255,31 @@ with tab_api:
 
     st.markdown("#### Endpoints Disponíveis:")
     st.code("""
-GET  /api/health       -> Status de integridade (banco PostgreSQL + fallback)
-GET  /api/regioes      -> Lista de RAs com contornos GeoJSON
-GET  /api/filtros      -> Opções para filtros (RAs, crimes, eixos, anos)
-GET  /api/heatmap      -> Matriz [latitude, longitude, peso] (centroides)
-GET  /api/coropleto    -> Intensidade por RA para mapa coropleto
-GET  /api/ocorrencias  -> Listagem agregada RA/crime/mês com busca
-GET  /api/stats        -> Indicadores agregados e KPIs
-POST /api/consolidar   -> Dispara pipeline de ETL dos arquivos brutos
-POST /api/carga-db     -> Carrega CSV consolidado + contornos no PostgreSQL
+GET  /api/health        -> Status de integridade (banco PostgreSQL + fallback)
+GET  /api/regioes       -> Lista de RAs com contornos GeoJSON
+GET  /api/filtros       -> Opções para filtros (RAs, crimes, eixos, anos)
+GET  /api/heatmap       -> Matriz [latitude, longitude, peso] (centroides)
+GET  /api/coropleto     -> Intensidade por RA para mapa coropleto
+GET  /api/ocorrencias   -> Listagem agregada RA/crime/mês com busca
+GET  /api/stats         -> Indicadores agregados e KPIs
+POST /api/consolidar    -> Dispara pipeline de ETL dos arquivos brutos
+POST /api/carga-db      -> Carrega CSV consolidado + contornos no PostgreSQL
+
+--- Autenticação (header X-Auth-Token nas rotas protegidas) ---
+POST /api/auth/registro          -> Cria conta e já devolve token de sessão
+POST /api/auth/login             -> Autentica (e-mail, senha, lembrar)
+POST /api/auth/logout            -> Encerra a sessão do token atual
+GET  /api/auth/eu                -> Dados do usuário autenticado
+POST /api/auth/trocar-senha      -> Troca a própria senha (revoga sessões)
+POST /api/auth/reset/solicitar   -> Gera token de redefinição (30 min)
+POST /api/auth/reset/confirmar   -> Redefine a senha com o token
+GET  /api/auth/health            -> Status do subsistema de autenticação
     """, language="text")
 
     st.info("💡 **Como iniciar a API**: Execute `python run.py api` ou use `run.bat` (opção 2).")
+
+with tab_conta:
+    render_auth_tab()
 
 st.sidebar.divider()
 st.sidebar.caption("UCB - Soluções Computacionais (8º Semestre)")

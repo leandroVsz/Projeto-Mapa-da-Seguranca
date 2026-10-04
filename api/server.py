@@ -14,6 +14,7 @@ if str(root_dir) not in sys.path:
 
 from api.routes.regioes import router as regioes_router
 from api.routes.ocorrencias import router as ocorrencias_router
+from api.routes.auth import router as auth_router
 from api.services.data_service import DataService
 from api.services.db_service import DbService
 
@@ -41,6 +42,7 @@ app.add_middleware(
 # Registra rotas
 app.include_router(regioes_router)
 app.include_router(ocorrencias_router)
+app.include_router(auth_router)
 
 data_service = DataService()
 db_service = DbService()
