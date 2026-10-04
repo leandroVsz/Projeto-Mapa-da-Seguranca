@@ -29,12 +29,8 @@ def render_charts(stats: dict):
 
     c3, c4 = st.columns(2)
     with c3:
-        por_periodo = stats.get("por_periodo", {})
         por_mes = stats.get("por_mes", {})
-        if por_periodo:
-            st.markdown("##### 🕒 Ocorrências por Período do Dia")
-            st.bar_chart(pd.Series(por_periodo), color="#f59e0b")
-        elif por_mes:
+        if por_mes:
             st.markdown("##### 📅 Ocorrências por Mês (histórico agregado)")
             meses = ["jan", "fev", "mar", "abr", "mai", "jun",
                      "jul", "ago", "set", "out", "nov", "dez"]

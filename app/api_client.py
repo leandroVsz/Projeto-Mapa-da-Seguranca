@@ -1,9 +1,10 @@
 """
-Cliente HTTP para consumo da API REST do backend (FastAPI).
-Possui fallback transparente para o DataService caso a API esteja offline.
+Cliente HTTP da API REST (FastAPI), com fallback transparente para o
+DataService quando a API está offline.
 """
 
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
+
 import requests
 from pathlib import Path
 import sys
@@ -19,10 +20,13 @@ DEFAULT_API_URL = "http://localhost:8000"
 
 
 class ApiClient:
-    def __init__(self, base_url: str = DEFAULT_API_URL):
-        self.base_url = base_url.rstrip("/")
+    def __init__(self, base_url: Optional[str] = None):
+        # Lido em tempo de chamada: permite que api/embedded.py redirecione
+        # a porta em runtime (API embutida no deploy em nuvem).
+        self.base_url = (base_url or DEFAULT_API_URL).rstrip("/")
         self._fallback_service = DataService()
         self._api_online = None
+        self._ultima_tentativa = 0.0
 
     def check_health(self) -> Dict[str, Any]:
         """Verifica se a API FastAPI está ativa."""
@@ -42,8 +46,20 @@ class ApiClient:
             self.check_health()
         return bool(self._api_online)
 
+    def _tentar_api_online_novamente(self) -> None:
+        """Re-tenta conectar (no máx. a cada 10s) se a API estava offline —
+        cobre o caso da API subir depois do app (ex: API embutida no deploy)."""
+        if self._api_online is False:
+            import time
+
+            agora = time.monotonic()
+            if agora - self._ultima_tentativa > 10.0:
+                self._ultima_tentativa = agora
+                self.check_health()
+
     def get_regioes(self) -> List[Dict[str, Any]]:
-        """Busca lista de Regiões Administrativas."""
+        """Busca lista de Regiões Administrativas (com contornos, se houver banco)."""
+        self._tentar_api_online_novamente()
         if self.is_online():
             try:
                 res = requests.get(f"{self.base_url}/api/regioes", timeout=2.5)
@@ -55,6 +71,7 @@ class ApiClient:
 
     def get_filtros(self) -> Dict[str, List[Any]]:
         """Busca opções de preenchimento dos filtros."""
+        self._tentar_api_online_novamente()
         if self.is_online():
             try:
                 res = requests.get(f"{self.base_url}/api/filtros", timeout=2.5)
@@ -71,7 +88,8 @@ class ApiClient:
         eixos: Optional[List[str]] = None,
         anos: Optional[List[int]] = None,
     ) -> Dict[str, Any]:
-        """Busca intensidade por RA para o mapa coropleto."""
+        """Busca intensidade por RA + top naturezas (tooltip) do coropleto."""
+        self._tentar_api_online_novamente()
         if self.is_online():
             try:
                 params = {}
@@ -88,16 +106,14 @@ class ApiClient:
                     return res.json()
             except Exception:
                 pass
-        # Fallback: conta ocorrências simuladas por RA
-        df = self._fallback_service.filtrar_ocorrencias(
-            regioes=regioes, naturezas=naturezas, anos=anos,
-        )
         return {
             "online": False,
-            "regioes": [
-                {"nome": nome, "total": int(total)}
-                for nome, total in df["regiao_administrativa"].value_counts().items()
-            ],
+            "regioes": self._fallback_service.get_coropleto(
+                regioes=regioes, naturezas=naturezas, eixos=eixos, anos=anos,
+            ),
+            "top_naturezas": self._fallback_service.get_top_naturezas(
+                regioes=regioes, naturezas=naturezas, eixos=eixos, anos=anos,
+            ),
         }
 
     def get_heatmap(
@@ -106,46 +122,9 @@ class ApiClient:
         naturezas: Optional[List[str]] = None,
         eixos: Optional[List[str]] = None,
         anos: Optional[List[int]] = None,
-        periodos: Optional[List[str]] = None,
-        ponderar: bool = True,
     ) -> List[List[float]]:
-        """Busca pontos do mapa de calor (centroides ponderados)."""
-        if self.is_online():
-            try:
-                params = {"ponderar": ponderar}
-                if regioes:
-                    params["regiao"] = regioes
-                if naturezas:
-                    params["natureza"] = naturezas
-                if eixos:
-                    params["eixo"] = eixos
-                if anos:
-                    params["ano"] = anos
-                if periodos:
-                    params["periodo"] = periodos
-
-                res = requests.get(f"{self.base_url}/api/heatmap", params=params, timeout=4.0)
-                if res.status_code == 200:
-                    return res.json().get("pontos", [])
-            except Exception:
-                pass
-        return self._fallback_service.get_pontos_calor(
-            regioes=regioes,
-            naturezas=naturezas,
-            anos=anos,
-            periodos=periodos,
-            ponderar_severidade=ponderar,
-        )
-
-    def get_stats(
-        self,
-        regioes: Optional[List[str]] = None,
-        naturezas: Optional[List[str]] = None,
-        eixos: Optional[List[str]] = None,
-        anos: Optional[List[int]] = None,
-        periodos: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
-        """Busca estatísticas e indicadores agregados."""
+        """Busca pontos do mapa de calor (um por RA, peso = total da RA)."""
+        self._tentar_api_online_novamente()
         if self.is_online():
             try:
                 params = {}
@@ -157,19 +136,70 @@ class ApiClient:
                     params["eixo"] = eixos
                 if anos:
                     params["ano"] = anos
-                if periodos:
-                    params["periodo"] = periodos
+                res = requests.get(f"{self.base_url}/api/heatmap", params=params, timeout=4.0)
+                if res.status_code == 200:
+                    return res.json().get("pontos", [])
+            except Exception:
+                pass
+        return self._fallback_service.get_pontos_calor(
+            regioes=regioes, naturezas=naturezas, eixos=eixos, anos=anos,
+        )
 
+    def get_detalhe_regiao(
+        self,
+        regiao: str,
+        naturezas: Optional[List[str]] = None,
+        eixos: Optional[List[str]] = None,
+        anos: Optional[List[int]] = None,
+    ) -> Dict[str, Any]:
+        """KPIs e distribuições de UMA RA sob os filtros atuais.
+        Usado no painel de detalhe ao clicar numa região do mapa."""
+        self._tentar_api_online_novamente()
+        if self.is_online():
+            try:
+                params = {"regiao": regiao}
+                if naturezas:
+                    params["natureza"] = naturezas
+                if eixos:
+                    params["eixo"] = eixos
+                if anos:
+                    params["ano"] = anos
+                res = requests.get(f"{self.base_url}/api/detalhe-regiao", params=params, timeout=4.0)
+                if res.status_code == 200:
+                    return res.json()
+            except Exception:
+                pass
+        return self._fallback_service.get_detalhe_regiao(
+            regiao=regiao, naturezas=naturezas, eixos=eixos, anos=anos,
+        )
+
+    def get_stats(
+        self,
+        regioes: Optional[List[str]] = None,
+        naturezas: Optional[List[str]] = None,
+        eixos: Optional[List[str]] = None,
+        anos: Optional[List[int]] = None,
+    ) -> Dict[str, Any]:
+        """Busca estatísticas e indicadores agregados."""
+        self._tentar_api_online_novamente()
+        if self.is_online():
+            try:
+                params = {}
+                if regioes:
+                    params["regiao"] = regioes
+                if naturezas:
+                    params["natureza"] = naturezas
+                if eixos:
+                    params["eixo"] = eixos
+                if anos:
+                    params["ano"] = anos
                 res = requests.get(f"{self.base_url}/api/stats", params=params, timeout=3.0)
                 if res.status_code == 200:
                     return res.json()
             except Exception:
                 pass
         return self._fallback_service.get_estatisticas(
-            regioes=regioes,
-            naturezas=naturezas,
-            anos=anos,
-            periodos=periodos,
+            regioes=regioes, naturezas=naturezas, eixos=eixos, anos=anos,
         )
 
     def get_ocorrencias(
@@ -178,11 +208,11 @@ class ApiClient:
         naturezas: Optional[List[str]] = None,
         eixos: Optional[List[str]] = None,
         anos: Optional[List[int]] = None,
-        periodos: Optional[List[str]] = None,
         busca: Optional[str] = None,
         limite: int = 500,
     ) -> List[Dict[str, Any]]:
-        """Busca listagem filtrada de ocorrências."""
+        """Busca listagem filtrada de ocorrências agregadas RA/crime/ano/mês."""
+        self._tentar_api_online_novamente()
         if self.is_online():
             try:
                 params = {"limite": limite}
@@ -194,8 +224,6 @@ class ApiClient:
                     params["eixo"] = eixos
                 if anos:
                     params["ano"] = anos
-                if periodos:
-                    params["periodo"] = periodos
                 if busca:
                     params["busca"] = busca
 
@@ -205,12 +233,24 @@ class ApiClient:
             except Exception:
                 pass
 
-        df = self._fallback_service.filtrar_ocorrencias(
-            regioes=regioes,
-            naturezas=naturezas,
-            anos=anos,
-            periodos=periodos,
-            termo_busca=busca,
+        df = self._fallback_service.filtrar(
+            regioes=regioes, naturezas=naturezas, eixos=eixos,
+            anos=anos, termo_busca=busca,
         )
-        return df.head(limite).to_dict(orient="records")
-
+        df = df.sort_values(
+            ["ano", "mes", "quantidade"], ascending=[False, True, False]
+        ).head(limite)
+        meses = ["jan", "fev", "mar", "abr", "mai", "jun",
+                 "jul", "ago", "set", "out", "nov", "dez"]
+        return [
+            {
+                "regiao_administrativa": r["regiao_administrativa"],
+                "natureza_crime": r["natureza"],
+                "eixo_indicador": r.get("eixo_limpo"),
+                "ano": int(r["ano"]),
+                "mes": meses[int(r["mes"]) - 1],
+                "tipo_registro": r["tipo_registro"],
+                "quantidade": int(r["quantidade"]),
+            }
+            for _, r in df.iterrows()
+        ]

@@ -14,7 +14,7 @@ O sistema foi desenhado com foco em **separação de responsabilidades** e facil
 ┌────────────────────────────────────────────────────────────────────────┐
 │                   FRONTEND WEB (Streamlit Dashboard)                   │
 │  - Mapa Coropleto por RA (polígonos GeoJSON) + Heatmap 2D e 3D         │
-│  - Filtros: RAs, Eixos Indicadores, Crimes, Períodos e Anos            │
+│  - Filtros: RAs, Eixos Indicadores, Crimes e Anos                      │
 │  - Cards de KPIs e Indicadores de Segurança Pública                    │
 │  - Gráficos estatísticos e tendências temporais                        │
 │  - Tabela detalhada de ocorrências com busca e exportação CSV          │
@@ -26,9 +26,9 @@ O sistema foi desenhado com foco em **separação de responsabilidades** e facil
 │                                                                        │
 │  - Endpoints REST documentados automaticamente no Swagger (/docs)      │
 │  - Agregações estatísticas via SQL (GROUP BY no PostgreSQL)            │
-│  - Coropleto, heatmap ponderado e séries mensais reais                 │
+│  - Coropleto, heatmap por RA e séries mensais reais                    │
 │  - Pipeline ETL: CSV consolidado → PostgreSQL/PostGIS                  │
-│  - Fallback transparente para CSV/simulado se o banco estiver offline  │
+│  - Fallback transparente (mesmo CSV da carga real) se o banco cair     │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ SQL (SQLAlchemy + PostGIS)
 ┌───────────────────────────────────▼────────────────────────────────────┐
@@ -90,6 +90,15 @@ python run.py api
 ---
 
 ## 🗄️ Banco de Dados (PostgreSQL + PostGIS)
+
+> [!TIP]
+> **Sem Docker/virtualização?** Use um banco gratuito na nuvem: crie um projeto em
+> [neon.tech](https://neon.tech) (Postgres com PostGIS), cole a connection string no
+> `.env` (`DATABASE_URL=postgresql+psycopg2://...?sslmode=require`) e rode
+> `python -m db.load_csv`. O mesmo banco serve para o deploy no Streamlit Cloud
+> (configurando `DATABASE_URL` como *secret* e `EMBED_API=true`).
+
+O backend consulta um banco PostgreSQL com extensão PostGIS, subido via Docker:
 
 O backend consulta um banco PostgreSQL com extensão PostGIS, subido via Docker:
 
@@ -165,7 +174,7 @@ python -m db.auth_admin listar
 python -m db.auth_smoke_test
 ```
 
-> Requer **Docker Desktop** (Windows/Mac) ou Docker Engine (Linux). Sem o banco no ar, o sistema continua funcionando no modo fallback (dados simulados), apenas sem o mapa coropleto e o filtro de eixos.
+> Requer **Docker Desktop** (Windows/Mac), Docker Engine (Linux) **ou um Postgres na nuvem** (ex: Neon — ver SETUP_WINDOWS.md). Sem banco no ar, o sistema continua funcionando no fallback (lendo o próprio CSV consolidado da SSP-DF), apenas sem os contornos do mapa coropleto.
 
 ### Modelo de dados
 
@@ -197,28 +206,6 @@ O sistema conta com dados e coordenadas representativas das principais Regiões 
 
 ---
 
-## ⚙️ Estratégia de Consolidação de Dados (ETL)
-
-Quando o grupo começar a utilizar os **dados reais baixados da SSP-DF** (onde cada arquivo representa um ano de uma cidade específica):
-
-1. Salve os arquivos brutos baixados dentro da pasta:
-   ```
-   data/raw/
-   ```
-   *Exemplo:* `ceilandia_2021.csv`, `ceilandia_2022.csv`, `taguatinga_2022.csv`.
-
-2. Execute a consolidação:
-   - Pelo Streamlit: Abra a aba **⚙️ Central de Consolidação (ETL)** e clique em **Executar Consolidação**.
-   - Pela API: Faça um `POST` em `/api/consolidar` (pelo Swagger).
-   - Pelo terminal:
-     ```bash
-     python -c "from api.services.data_ingestion import consolidar_arquivos_por_cidade; consolidar_arquivos_por_cidade()"
-     ```
-
-3. **Resultado**: O pipeline gerará os arquivos unificados por cidade em `data/processed/cidades/` e a base mestre consolidada de todo o Distrito Federal em `data/processed/ocorrencias_df_master.csv`.
-
----
-
 ## 🔌 Endpoints da API REST (FastAPI)
 
 | Método | Rota | Descrição |
@@ -227,9 +214,10 @@ Quando o grupo começar a utilizar os **dados reais baixados da SSP-DF** (onde c
 | `GET` | `/api/regioes` | RAs com contorno GeoJSON, código e centroide |
 | `GET` | `/api/filtros` | Opções de filtros: RAs, crimes, **eixos indicadores**, anos |
 | `GET` | `/api/heatmap` | Matriz `[lat, lon, peso]` (centroides ponderados) |
-| `GET` | `/api/coropleto` | Intensidade por RA `{nome, total}` para o mapa coropleto |
+| `GET` | `/api/coropleto` | Intensidade por RA `{nome, total}` para o mapa coropleto + top naturezas por RA (tooltip) |
 | `GET` | `/api/ocorrencias` | Listagem agregada RA/crime/ano/mês com busca textual |
 | `GET` | `/api/stats` | Indicadores-chave (KPIs) e séries por ano/mês |
+| `GET` | `/api/detalhe-regiao` | KPIs e distribuições de UMA RA (usado ao clicar numa região no mapa) |
 | `POST`| `/api/consolidar` | Executa a unificação de arquivos brutos anuais (ETL) |
 | `POST`| `/api/carga-db` | Carrega o CSV consolidado + contornos no PostgreSQL |
 

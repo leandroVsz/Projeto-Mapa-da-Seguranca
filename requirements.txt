@@ -1,25 +1,37 @@
+# =============================================================
 # Mapa da Segurança DF - Dependências 100% Python
-# Compatível diretamente com Windows e Linux (sem necessidade de compiladores C++)
+# Instalação: pip install -r requirements.txt
+# Requisitos: Python 3.10+ (testado até Python 3.14)
+# Todas as libs possuem wheels pré-compilados para Windows
+# (sem necessidade de compiladores C++ ou Visual Studio).
+# =============================================================
 
-streamlit>=1.35.0
-fastapi>=0.110.0
-uvicorn>=0.29.0
-pandas>=2.0.0
-numpy>=1.24.0
-pydeck>=0.8.0
-requests>=2.31.0
-python-dotenv>=1.0.0
+# --- Interface Web (Dashboard Streamlit) ---
+streamlit>=1.36        # Framework do dashboard (renderiza PyDeck com MapLibre)
+pydeck>=0.8.0          # Camadas de mapa: coropleto, heatmap 2D, hexágonos 3D
+pandas>=2.0.0          # Manipulação de dados/CSV (fallback e pipeline ETL)
+numpy>=1.24.0          # Base numérica do pandas (geração de dados de amostra)
 
-# Banco de dados (PostgreSQL + PostGIS)
-sqlalchemy>=2.0.0
-psycopg2-binary>=2.9.0
-geoalchemy2>=0.14.0
-shapely>=2.0.0
+# --- Backend (API REST) ---
+fastapi>=0.110.0       # Framework da API REST
+uvicorn>=0.29.0        # Servidor ASGI que roda a API
+requests>=2.31.0       # Cliente HTTP (ApiClient do Streamlit + download GeoJSON)
+python-dotenv>=1.0.0   # Carrega variáveis do .env (DATABASE_URL, AUTH_REQUIRED)
+pydantic>=2.6          # Modelos de requisição/resposta (dependência do FastAPI)
 
-# Autenticação (hash de senha bcrypt)
-bcrypt>=4.0.0
+# --- Banco de Dados (PostgreSQL + PostGIS) ---
+sqlalchemy>=2.0.0      # ORM e engine de conexão
+psycopg2-binary>=2.9.0 # Driver PostgreSQL (wheel binário, sem compilar)
+geoalchemy2>=0.14.0    # Tipos espaciais PostGIS nos modelos SQLAlchemy
+shapely>=2.0.0         # Geometrias (contornos das RAs, centroides, uniões)
 
-# Ingestão de planilhas SSP-DF (usados por api/services/ingest_crimemap.py)
-pandas>=2.0.0
-openpyxl>=3.1.0
-xlrd>=2.0.0
+# --- Autenticação ---
+bcrypt>=4.0.0          # Hash de senha (cost 12) do subsistema de login
+
+# --- Ingestão de planilhas SSP-DF (data/raw/*.xlsx) ---
+openpyxl>=3.1.0        # Leitura de planilhas .xlsx
+xlrd>=2.0.0            # Leitura de planilhas .xls (arquivos agregados antigos)
+
+# --- Testes (python -m pytest) ---
+pytest>=8.0.0          # Framework de testes unitários (suíte em tests/)
+pytest-cov>=5.0.0      # Medição de cobertura dos testes

@@ -74,12 +74,16 @@ ALIASES_REGIAO = {
     # unifica grafias divergentes vistas entre arquivos da SSP-DF
     "brasilia": "Brasília",
     "aguas claras": "Águas Claras",
+    "arniqueira": "Arniqueira",
+    "arniqueiras": "Arniqueira",
     "brazlandia": "Brazlândia",
     "ceilandia": "Ceilândia",
     "candangolandia": "Candangolândia",
     "cruzeiro": "Cruzeiro",
     "fercal": "Fercal",
     "guara": "Guará",
+    "guara i": "Guará I",
+    "guara ii": "Guará II",
     "itapoa": "Itapoã",
     "jardim botanico": "Jardim Botânico",
     "paranoa": "Paranoá",
@@ -111,6 +115,7 @@ ALIASES_REGIAO = {
     "sobradinho": "Sobradinho",
     "sia": "SIA",
     "s.i.a.": "SIA",
+    "scia": "SCIA",
     "sol": "Sol Nascente/Pôr do Sol",
     "sol nascente": "Sol Nascente/Pôr do Sol",
     "sol nascente/por do sol": "Sol Nascente/Pôr do Sol",
@@ -252,7 +257,13 @@ def extrair_poligonos_por_nome(geojson: dict) -> dict[str, dict]:
             codigo = int(codigo) if codigo is not None else None
         except (ValueError, TypeError):
             codigo = None
-        brutos[resolver_regiao(nome_bruto)] = {"polygon": geom, "codigo": codigo}
+        nome_final = resolver_regiao(nome_bruto)
+        # Se um arquivo do GeoJSON resolver para o nome de uma RA mesclada
+        # (ex: 'Arniqueiras' → 'Arniqueira' pelo alias do CSV), ele é uma
+        # PARTE dessa RA — mantém o nome normalizado p/ a união funcionar.
+        if nome_final in MERGE_POLIGONOS:
+            nome_final = normalizar_nome_regiao(nome_bruto)
+        brutos[nome_final] = {"polygon": geom, "codigo": codigo}
 
     def _reparar(geom):
         """Corrige topologia inválida (auto-interseções do fonte)."""
@@ -268,8 +279,13 @@ def extrair_poligonos_por_nome(geojson: dict) -> dict[str, dict]:
             if unido.geom_type == "Polygon":
                 unido = MultiPolygon([unido])
             out[alvo] = {"polygon": unido, "codigo": None}
-    # RAs que já vêm direto no GeoJSON
+    # RAs que já vêm direto no GeoJSON — exceto as partes já absorvidas por
+    # uma RA mesclada acima (ex: 'Asa Sul' dentro de 'Brasília'), que ficariam
+    # como polígonos sobrepostos "duplicados" no mapa coropleto.
+    partes_consumidas = {p for partes in MERGE_POLIGONOS.values() for p in partes}
     for nome, dados in brutos.items():
+        if nome in partes_consumidas:
+            continue
         out.setdefault(nome, dados)
     return out
 
@@ -317,12 +333,22 @@ def preparar_dataframe(caminho_csv: Path) -> pd.DataFrame:
     return df
 
 
+def criar_extensao_postgis():
+    """Garante a extensão PostGIS no banco. Necessário quando o schema.sql
+    não foi aplicado por entrypoint (ex: Postgres na nuvem, tipo Neon)."""
+    with SessionLocal() as session:
+        session.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+        session.commit()
+        print("  ✔ Extensão PostGIS disponível")
+
+
 def carregar_base() -> dict:
     """Executa a carga completa. Retorna resumo para logs/endpoint."""
     resumo: dict = {"regioes": 0, "crimes": 0, "registros_inseridos": 0,
                     "avisos": []}
 
     print("🔧 Criando tabelas (idempotente)...")
+    criar_extensao_postgis()
     Base.metadata.create_all(engine)
 
     # --- 1. CSV consolidado -------------------------------------------
@@ -343,6 +369,17 @@ def carregar_base() -> dict:
         if geojson:
             poligonos = extrair_poligonos_por_nome(geojson)
     centroides_fallback = carregar_centroides_fallback()
+
+    # Garante que TODAS as RAs com contorno conhecido existam na dimensão,
+    # mesmo sem nenhuma ocorrência no CSV — assim o mapa coropleto exibe o
+    # DF completo (RAs sem dados aparecem em cinza no frontend).
+    if poligonos:
+        faltantes = [r for r in poligonos
+                     if r not in regioes_unicas and r != "Distrito Federal"]
+        if faltantes:
+            print(f"  ➕ {len(faltantes)} RAs sem dados no CSV adicionadas ao mapa: "
+                  f"{faltantes[:6]}{'...' if len(faltantes) > 6 else ''}")
+            regioes_unicas = sorted(set(regioes_unicas) | set(faltantes))
 
     print("💾 Carregando dimensões no banco (upsert idempotente)...")
     with SessionLocal() as session:
