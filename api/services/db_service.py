@@ -157,7 +157,37 @@ class DbService:
         return [{"nome": r[0], "total": int(r[1])} for r in rows]
 
     # ------------------------------------------------------------------
-    # Heatmap: centroides ponderados
+    # Top naturezas por RA (tooltip do coropleto)
+    # ------------------------------------------------------------------
+    @db_query
+    def get_top_naturezas(
+        self,
+        regioes=None, naturezas=None, eixos=None, anos=None,
+        tipo_registro: str = "OCORRENCIA",
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Mapa RA → [{natureza, total}] ordenado por total desc,
+        sob os mesmos filtros do coropleto."""
+        with SessionLocal() as s:
+            params: Dict[str, Any] = {}
+            where = self._where(regioes, naturezas, eixos, anos, tipo_registro, params)
+            rows = s.execute(text(f"""
+                SELECT r.nome, t.nome, SUM(f.quantidade) AS q
+                FROM ocorrencia_mensal f
+                JOIN regiao_administrativa r ON r.id = f.regiao_id
+                JOIN tipo_crime t ON t.id = f.tipo_crime_id
+                {where}
+                GROUP BY r.nome, t.nome
+                ORDER BY r.nome, q DESC
+            """), params).all()
+        top: Dict[str, List[Dict[str, Any]]] = {}
+        for ra, nat, q in rows:
+            if int(q) <= 0:
+                continue
+            top.setdefault(ra, []).append({"natureza": nat, "total": int(q)})
+        return top
+
+    # ------------------------------------------------------------------
+    # Heatmap: um ponto por RA, peso = total
     # ------------------------------------------------------------------
     @db_query
     def get_pontos_calor(
@@ -309,6 +339,62 @@ class DbService:
             "crime_mais_frequente": crime[0] if crime else "N/A",
             "por_natureza": por_natureza,
             "por_regiao": por_regiao,
+            "por_ano": por_ano,
+            "por_mes": por_mes,
+        }
+
+    # ------------------------------------------------------------------
+    # Detalhe de uma RA (painel ao clicar no mapa)
+    # ------------------------------------------------------------------
+    @db_query
+    def get_detalhe_regiao(
+        self,
+        regiao: str,
+        naturezas=None, eixos=None, anos=None,
+        tipo_registro: str = "OCORRENCIA",
+    ) -> Dict[str, Any]:
+        """KPIs e distribuições de uma RA, sob os filtros do painel."""
+        with SessionLocal() as s:
+            params: Dict[str, Any] = {}
+            where = self._where(None, naturezas, eixos, anos, tipo_registro, params)
+            params["ra"] = regiao
+            where_ra = ("AND " if where else "") + "r.nome = :ra"
+
+            total = int(s.execute(text(f"""
+                SELECT COALESCE(SUM(f.quantidade), 0) FROM ocorrencia_mensal f
+                JOIN regiao_administrativa r ON r.id = f.regiao_id
+                JOIN tipo_crime t ON t.id = f.tipo_crime_id
+                {where} {where_ra}
+            """), params).scalar() or 0)
+
+            por_natureza = {r[0]: int(r[1]) for r in s.execute(text(f"""
+                SELECT t.nome, SUM(f.quantidade) q FROM ocorrencia_mensal f
+                JOIN regiao_administrativa r ON r.id = f.regiao_id
+                JOIN tipo_crime t ON t.id = f.tipo_crime_id
+                {where} {where_ra}
+                GROUP BY t.nome ORDER BY q DESC
+            """), params).all()}
+
+            por_ano = {int(r[0]): int(r[1]) for r in s.execute(text(f"""
+                SELECT f.ano, SUM(f.quantidade) q FROM ocorrencia_mensal f
+                JOIN regiao_administrativa r ON r.id = f.regiao_id
+                JOIN tipo_crime t ON t.id = f.tipo_crime_id
+                {where} {where_ra}
+                GROUP BY f.ano ORDER BY f.ano
+            """), params).all()}
+
+            por_mes = {int(r[0]): int(r[1]) for r in s.execute(text(f"""
+                SELECT f.mes, SUM(f.quantidade) q FROM ocorrencia_mensal f
+                JOIN regiao_administrativa r ON r.id = f.regiao_id
+                JOIN tipo_crime t ON t.id = f.tipo_crime_id
+                {where} {where_ra}
+                GROUP BY f.mes ORDER BY f.mes
+            """), params).all()}
+
+        return {
+            "regiao": regiao,
+            "total_ocorrencias": total,
+            "por_natureza": por_natureza,
             "por_ano": por_ano,
             "por_mes": por_mes,
         }

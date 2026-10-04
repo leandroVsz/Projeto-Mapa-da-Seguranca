@@ -22,19 +22,15 @@ def render_metrics(stats: dict):
     crime = stats.get("crime_mais_frequente", "N/A")
     c3.metric(label="Crime Mais Frequente", value=crime)
 
-    # 'periodo_mais_critico' só existe nos dados simulados (fallback);
-    # nos dados reais mostramos o pico mensal agregado.
-    periodo = stats.get("periodo_mais_critico")
-    if not periodo:
-        por_mes = stats.get("por_mes", {})
-        if por_mes:
-            meses = ["jan", "fev", "mar", "abr", "mai", "jun",
-                     "jul", "ago", "set", "out", "nov", "dez"]
-            # chaves voltam do JSON como strings; normaliza para int
-            mes_pico = max(por_mes, key=lambda m: por_mes[m])
-            mes_pico = int(mes_pico)
-            periodo = f"{meses[mes_pico - 1].capitalize()} (histórico)"
-        else:
-            periodo = "N/A"
-    c4.metric(label="Período/Pico Mais Crítico", value=periodo)
+    # Pico mensal agregado (o mês com mais ocorrências nos filtros)
+    por_mes = stats.get("por_mes", {})
+    if por_mes:
+        meses = ["jan", "fev", "mar", "abr", "mai", "jun",
+                 "jul", "ago", "set", "out", "nov", "dez"]
+        # chaves voltam do JSON como strings; normaliza para int
+        mes_pico = int(max(por_mes, key=lambda m: por_mes[m]))
+        pico = f"{meses[mes_pico - 1].capitalize()} (histórico)"
+    else:
+        pico = "N/A"
+    c4.metric(label="Mês Mais Crítico", value=pico)
 

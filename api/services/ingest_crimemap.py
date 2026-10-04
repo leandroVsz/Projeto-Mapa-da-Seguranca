@@ -225,20 +225,15 @@ def process_file(path: Path, warnings: list) -> list:
     return frames
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--input", "-i", default="raw_data", help="Pasta com os .xls/.xlsx baixados manualmente")
-    ap.add_argument("--output", "-o", default="output/crimemap_consolidado.csv", help="Caminho do CSV consolidado")
-    args = ap.parse_args()
-
-    input_dir = Path(args.input)
-    output_path = Path(args.output)
+def consolidar(input_dir: Path, output_path: Path) -> dict:
+    """Consolida todos os .xls/.xlsx de input_dir no CSV output_path.
+    Retorna um resumo (linhas, regiões, anos, avisos) — reutilizável pela API."""
+    output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    files = sorted(list(input_dir.glob("*.xls")) + list(input_dir.glob("*.xlsx")))
+    files = sorted(list(Path(input_dir).glob("*.xls")) + list(Path(input_dir).glob("*.xlsx")))
     if not files:
-        print(f"Nenhum arquivo .xls/.xlsx encontrado em '{input_dir}'.", file=sys.stderr)
-        sys.exit(1)
+        return {"status": "nenhum_arquivo", "mensagem": f"Nenhum arquivo .xls/.xlsx em '{input_dir}'"}
 
     warnings = []
     all_frames = []
@@ -248,10 +243,8 @@ def main():
         print(f"  {f.name}: {len(frames)} aba(s) processada(s)")
 
     if not all_frames:
-        print("Nenhum dado foi extraído. Veja os avisos abaixo:", file=sys.stderr)
-        for w in warnings:
-            print(f"  - {w}", file=sys.stderr)
-        sys.exit(1)
+        return {"status": "sem_dados", "avisos": warnings,
+                "mensagem": "Nenhum dado extraído dos arquivos."}
 
     consolidado = pd.concat(all_frames, ignore_index=True)
     consolidado = consolidado.sort_values(
@@ -260,15 +253,30 @@ def main():
 
     consolidado.to_csv(output_path, index=False, encoding="utf-8-sig")
 
+    resumo = {
+        "status": "ok",
+        "csv_gerado": str(output_path),
+        "linhas": int(len(consolidado)),
+        "regioes": int(consolidado["regiao_administrativa"].nunique()),
+        "anos": sorted(int(a) for a in consolidado["ano"].unique()),
+        "avisos": warnings,
+    }
     print(f"\n✔ Consolidado salvo em: {output_path}")
-    print(f"  Linhas: {len(consolidado)}")
-    print(f"  Regiões administrativas: {consolidado['regiao_administrativa'].nunique()}")
-    print(f"  Anos: {sorted(consolidado['ano'].unique().tolist())}")
-
+    print(f"  Linhas: {resumo['linhas']} | Regiões: {resumo['regioes']} | Anos: {resumo['anos']}")
     if warnings:
         print(f"\n⚠ {len(warnings)} aviso(s) durante o processamento:")
         for w in warnings:
             print(f"  - {w}")
+    return resumo
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--input", "-i", default="raw_data", help="Pasta com os .xls/.xlsx baixados manualmente")
+    ap.add_argument("--output", "-o", default="output/crimemap_consolidado.csv", help="Caminho do CSV consolidado")
+    args = ap.parse_args()
+
+    consolidar(Path(args.input), Path(args.output))
 
 
 if __name__ == "__main__":
