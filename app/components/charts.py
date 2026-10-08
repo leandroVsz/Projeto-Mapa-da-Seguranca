@@ -6,6 +6,8 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from app.components.chart_export import gerar_csv, gerar_pdf, nome_arquivo
+
 MESES = ["jan", "fev", "mar", "abr", "mai", "jun",
          "jul", "ago", "set", "out", "nov", "dez"]
 
@@ -112,6 +114,24 @@ def render_charts(stats: dict):
     else:
         titulo = f"Ocorrências por {dimensao.lower()}"
         st.plotly_chart(criar_figura(df, tipo, titulo), width="stretch")
+
+        b1, b2, _ = st.columns([1, 1, 3])
+        b1.download_button(
+            "⬇️ Exportar CSV",
+            data=gerar_csv(df),
+            file_name=nome_arquivo(titulo, tipo, "csv"),
+            mime="text/csv",
+            key="exportar_csv",
+            width="stretch",
+        )
+        b2.download_button(
+            "⬇️ Exportar PDF",
+            data=gerar_pdf(df, tipo, titulo),
+            file_name=nome_arquivo(titulo, tipo, "pdf"),
+            mime="application/pdf",
+            key="exportar_pdf",
+            width="stretch",
+        )
 
     with st.expander("📊 Visão geral (gráficos fixos)", expanded=False):
         _render_visao_geral(stats)
