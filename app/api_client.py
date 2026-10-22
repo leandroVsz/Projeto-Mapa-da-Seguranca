@@ -254,3 +254,95 @@ class ApiClient:
             }
             for _, r in df.iterrows()
         ]
+
+    # ------------------------------------------------------------------
+    # Relatórios salvos (HU08) — exigem login (token) e API/banco online.
+    # Não existe fallback em CSV: no modo direto local (sem API), a
+    # própria tela avisa o usuário em vez de chamar estes métodos.
+    # ------------------------------------------------------------------
+    def salvar_relatorio(
+        self,
+        token: str,
+        titulo: str,
+        dimensao: str,
+        tipo_grafico: str,
+        top_n: int = 10,
+        filtros: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Salva a configuração de um gráfico na conta do usuário logado.
+        Retorna {"ok": True, "relatorio": {...}} ou {"ok": False, "erro": str}."""
+        if not token:
+            return {"ok": False, "erro": "Você precisa estar logado para salvar relatórios."}
+        self._tentar_api_online_novamente()
+        if not self.is_online():
+            return {"ok": False, "erro": "API indisponível no momento. Tente novamente mais tarde."}
+        try:
+            res = requests.post(
+                f"{self.base_url}/api/relatorios",
+                json={
+                    "titulo": titulo,
+                    "dimensao": dimensao,
+                    "tipo_grafico": tipo_grafico,
+                    "top_n": top_n,
+                    "filtros": filtros or {},
+                },
+                headers={"X-Auth-Token": token},
+                timeout=4.0,
+            )
+            if res.status_code == 200:
+                return {"ok": True, "relatorio": res.json()}
+            try:
+                detail = res.json().get("detail", "Não foi possível salvar o relatório.")
+            except Exception:
+                detail = "Não foi possível salvar o relatório."
+            return {"ok": False, "erro": detail}
+        except Exception:
+            return {"ok": False, "erro": "Falha de conexão com a API."}
+
+    def listar_relatorios(self, token: str) -> Dict[str, Any]:
+        """Lista os relatórios salvos do usuário logado.
+        Retorna {"ok": True, "relatorios": [...]} ou {"ok": False, "erro": str}."""
+        if not token:
+            return {"ok": False, "erro": "Você precisa estar logado para ver seus relatórios."}
+        self._tentar_api_online_novamente()
+        if not self.is_online():
+            return {"ok": False, "erro": "API indisponível no momento. Tente novamente mais tarde."}
+        try:
+            res = requests.get(
+                f"{self.base_url}/api/relatorios",
+                headers={"X-Auth-Token": token},
+                timeout=4.0,
+            )
+            if res.status_code == 200:
+                return {"ok": True, "relatorios": res.json()}
+            try:
+                detail = res.json().get("detail", "Não foi possível carregar os relatórios.")
+            except Exception:
+                detail = "Não foi possível carregar os relatórios."
+            return {"ok": False, "erro": detail}
+        except Exception:
+            return {"ok": False, "erro": "Falha de conexão com a API."}
+
+    def excluir_relatorio(self, token: str, relatorio_id: int) -> Dict[str, Any]:
+        """Exclui um relatório salvo (só o do próprio usuário).
+        Retorna {"ok": True} ou {"ok": False, "erro": str}."""
+        if not token:
+            return {"ok": False, "erro": "Você precisa estar logado para excluir relatórios."}
+        self._tentar_api_online_novamente()
+        if not self.is_online():
+            return {"ok": False, "erro": "API indisponível no momento. Tente novamente mais tarde."}
+        try:
+            res = requests.delete(
+                f"{self.base_url}/api/relatorios/{relatorio_id}",
+                headers={"X-Auth-Token": token},
+                timeout=4.0,
+            )
+            if res.status_code == 200:
+                return {"ok": True}
+            try:
+                detail = res.json().get("detail", "Não foi possível excluir o relatório.")
+            except Exception:
+                detail = "Não foi possível excluir o relatório."
+            return {"ok": False, "erro": detail}
+        except Exception:
+            return {"ok": False, "erro": "Falha de conexão com a API."}
