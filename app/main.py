@@ -252,7 +252,16 @@ with tab_mapa:
 
 with tab_graficos:
     st.subheader("Análise Estatística da Criminalidade")
-    render_charts(stats)
+    render_charts(
+        stats,
+        client=client,
+        filtros={
+            "regioes": ra_selecionadas or [],
+            "eixos": eixos_selecionados or [],
+            "naturezas": crimes_selecionados or [],
+            "anos": anos_selecionados or [],
+        },
+    )
 
 with tab_tabela:
     st.subheader("Registros Detalhados de Ocorrências")
