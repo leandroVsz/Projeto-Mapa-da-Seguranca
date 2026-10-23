@@ -116,7 +116,9 @@ def chamar_auth(path: str, payload: dict, token: Optional[str] = None):
     """Executa via API REST; se offline, executa direto no banco."""
     ok, data = _chamar(path, payload, token)
     if ok is None:                       # API offline -> fallback local
-        return False, _via_banco(path, payload)
+        data = _via_banco(path, payload)
+        ok = "detail" not in (data or {})   # sucesso = sem campo de erro
+        return ok, data
     return ok, data
 
 
