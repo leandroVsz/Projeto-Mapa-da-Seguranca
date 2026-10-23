@@ -73,3 +73,30 @@ CREATE TABLE IF NOT EXISTS auth.log_acesso (
 );
 
 CREATE INDEX IF NOT EXISTS ix_log_acesso_email ON auth.log_acesso (email, criado_em DESC);
+
+-- ---------------------------------------------------------------------
+-- Tabela: auth.RELATORIO_SALVO
+-- Relatórios (gráficos) que o usuário logado salva na própria conta
+-- (HU08 / Tela "Meus relatórios"). Guarda apenas a CONFIGURAÇÃO do
+-- gráfico — dimensão, tipo, Top N e filtros —, e não a imagem: ao
+-- reabrir, o gráfico é regenerado com os dados atuais.
+-- Exemplo de filtros:
+--   {"regioes": ["Ceilândia"], "eixos": [], "naturezas": [], "anos": [2024]}
+-- Lista vazia = sem filtro (todos). Ao excluir o usuário, os relatórios
+-- dele são excluídos junto (ON DELETE CASCADE).
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS auth.relatorio_salvo (
+    id            BIGSERIAL PRIMARY KEY,
+    usuario_id    BIGINT       NOT NULL REFERENCES auth.usuario(id) ON DELETE CASCADE,
+    titulo        VARCHAR(120) NOT NULL,
+    dimensao      VARCHAR(20)  NOT NULL
+                  CHECK (dimensao IN ('por_regiao', 'por_natureza', 'por_mes', 'por_ano')),
+    tipo_grafico  VARCHAR(30)  NOT NULL,
+    top_n         SMALLINT     NOT NULL DEFAULT 10 CHECK (top_n BETWEEN 3 AND 30),
+    filtros       JSONB        NOT NULL DEFAULT '{}'::jsonb,
+    criado_em     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_relatorio_usuario_titulo UNIQUE (usuario_id, titulo)
+);
+
+CREATE INDEX IF NOT EXISTS ix_relatorio_usuario
+    ON auth.relatorio_salvo (usuario_id, criado_em DESC);

@@ -2,10 +2,13 @@
 Componentes de gráficos e análises estatísticas para o Streamlit.
 """
 
+from typing import Optional
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from app.auth_ui import is_logado
 from app.components.chart_export import gerar_csv, gerar_pdf, nome_arquivo
 
 MESES = ["jan", "fev", "mar", "abr", "mai", "jun",
@@ -94,8 +97,59 @@ def _render_visao_geral(stats: dict):
             st.line_chart(pd.Series(stats["por_ano"]), color="#10b981")
 
 
-def render_charts(stats: dict):
-    """Renderiza o gráfico personalizado (escolha de tipo) + visão geral."""
+def _render_salvar_relatorio(client, filtros: Optional[dict], dimensao: str, tipo: str,
+                              top_n: int, titulo_padrao: str):
+    """Botão 'Salvar relatório' (HU08). Exige API online + login; no modo
+    direto local (sem banco), mostra aviso em vez de quebrar."""
+    st.markdown("##### 💾 Salvar relatório")
+
+    if client is None or not client.is_online():
+        st.caption(
+            "Salvar relatórios exige o backend conectado (API + banco). "
+            "No momento o app está no **Modo Direto Local**."
+        )
+        return
+
+    if not is_logado():
+        st.caption("Entre na aba **👤 Conta & Acesso** para salvar relatórios na sua conta.")
+        return
+
+    with st.form("form_salvar_relatorio", clear_on_submit=True):
+        titulo_relatorio = st.text_input(
+            "Título do relatório",
+            max_chars=120,
+            placeholder=f"Ex.: {titulo_padrao}",
+            key="salvar_relatorio_titulo",
+        )
+        enviado = st.form_submit_button("💾 Salvar relatório")
+
+    if enviado:
+        titulo_relatorio = (titulo_relatorio or "").strip()
+        if not titulo_relatorio:
+            st.error("Informe um título para o relatório.")
+            return
+        token = st.session_state.get("auth_token")
+        resultado = client.salvar_relatorio(
+            token=token,
+            titulo=titulo_relatorio,
+            dimensao=DIMENSOES[dimensao],
+            tipo_grafico=tipo,
+            top_n=int(top_n),
+            filtros=filtros or {},
+        )
+        if resultado.get("ok"):
+            st.success(f'Relatório "{titulo_relatorio}" salvo! Veja em 📁 Meus relatórios.')
+        else:
+            st.error(resultado.get("erro", "Não foi possível salvar o relatório."))
+
+
+def render_charts(stats: dict, client=None, filtros: Optional[dict] = None):
+    """Renderiza o gráfico personalizado (escolha de tipo) + visão geral.
+
+    client: instância de ApiClient (necessária para salvar relatórios).
+    filtros: filtros ativos na barra lateral (regioes/eixos/naturezas/anos),
+             salvos junto do relatório para poder reabri-lo depois.
+    """
     if not stats:
         st.info("Nenhuma estatística disponível.")
         return
@@ -132,6 +186,9 @@ def render_charts(stats: dict):
             key="exportar_pdf",
             width="stretch",
         )
+
+        st.markdown("")
+        _render_salvar_relatorio(client, filtros, dimensao, tipo, int(top_n), titulo)
 
     with st.expander("📊 Visão geral (gráficos fixos)", expanded=False):
         _render_visao_geral(stats)
