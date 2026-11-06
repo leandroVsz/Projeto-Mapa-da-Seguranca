@@ -198,6 +198,10 @@ class DataService:
             r["nome"]: (r["latitude"], r["longitude"])
             for r in (self._regioes_meta or [])
         }
+        # Normaliza apenas as RAs que realmente viram ponto no mapa: o
+        # agregado 'Distrito Federal' (e qualquer RA sem centroide) não é
+        # plotado e não pode distorcer a escala de peso.
+        agg = agg[agg["regiao_administrativa"].isin(centroides)]
         max_total = float(agg["quantidade"].max()) if not agg.empty else 0.0
         pontos = []
         for _, row in agg.iterrows():
@@ -278,9 +282,12 @@ class DataService:
                     "por_regiao": {}, "por_ano": {}, "por_mes": {}}
         por_natureza = df.groupby("natureza")["quantidade"].sum().sort_values(ascending=False)
         por_regiao = df.groupby("regiao_administrativa")["quantidade"].sum().sort_values(ascending=False)
+        # 'Distrito Federal' é o agregado estadual (não é uma RA): como já
+        # acontece no DbService, ele não concorre ao ranking de regiões.
+        por_regiao = por_regiao.drop("Distrito Federal", errors="ignore")
         return {
             "total_ocorrencias": int(df["quantidade"].sum()),
-            "ra_mais_afetada": str(por_regiao.index[0]),
+            "ra_mais_afetada": str(por_regiao.index[0]) if not por_regiao.empty else "N/A",
             "crime_mais_frequente": str(por_natureza.index[0]),
             "por_natureza": {k: int(v) for k, v in por_natureza.items()},
             "por_regiao": {k: int(v) for k, v in por_regiao.items()},
