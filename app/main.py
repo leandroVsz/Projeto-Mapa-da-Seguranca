@@ -328,5 +328,5 @@ with tab_conta:
     render_auth_tab()
 
 st.sidebar.divider()
-st.sidebar.caption("Dados mais recente: 08/2026 | Fonte: SSP-DF (Secretaria de Segurança Pública do Distrito Federal) | Projeto acadêmico UCB - Soluções Computacionais (8º Semestre)")
+st.sidebar.caption("Dados mais recentes: 08/2026 | Fonte: SSP-DF (Secretaria de Segurança Pública do Distrito Federal) | Projeto acadêmico UCB - Soluções Computacionais (8º Semestre)")
 

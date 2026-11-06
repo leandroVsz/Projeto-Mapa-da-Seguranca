@@ -138,7 +138,7 @@ def _render_salvar_relatorio(client, filtros: Optional[dict], dimensao: str, tip
             filtros=filtros or {},
         )
         if resultado.get("ok"):
-            st.success(f'Relatório "{titulo_relatorio}" salvo! Veja em 📁 Meus relatórios.')
+            st.success(f'Relatório "{titulo_relatorio}" salvo na sua conta!')
         else:
             st.error(resultado.get("erro", "Não foi possível salvar o relatório."))
 

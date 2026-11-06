@@ -160,7 +160,10 @@ def obter_estatisticas(
         return _fallback.get_estatisticas(
             regioes=regiao, naturezas=natureza, eixos=eixo,
             anos=ano, tipo_registro=tipo_registro,
-        )@router.post("/consolidar", summary="Disparar Consolidação das Planilhas SSP-DF (ETL)")
+        )
+
+
+@router.post("/consolidar", summary="Disparar Consolidação das Planilhas SSP-DF (ETL)")
 def consolidar_dados():
     """Roda o ingest_crimemap sobre data/raw/ e gera o CSV consolidado
     (mesmo esquema da base real: pivô jan..dez por RA/crime/ano)."""
