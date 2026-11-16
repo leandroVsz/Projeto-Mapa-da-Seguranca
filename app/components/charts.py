@@ -113,7 +113,6 @@ def _render_salvar_relatorio(client, filtros: Optional[dict], dimensao: str, tip
     if not is_logado():
         st.caption("Entre na aba **👤 Conta & Acesso** para salvar relatórios na sua conta.")
         return
-
     with st.form("form_salvar_relatorio", clear_on_submit=True):
         titulo_relatorio = st.text_input(
             "Título do relatório",

@@ -31,6 +31,7 @@ from app.auth_ui import (
 from app.components.metrics import render_metrics
 from app.components.map_view import render_map, ESTILOS_MAPA
 from app.components.charts import render_charts
+from app.components.relatorios import render_meus_relatorios
 from api.embedded import iniciar_api_embutida
 
 # Configuração da página
@@ -175,12 +176,13 @@ render_metrics(stats)
 
 st.markdown("---")
 
-tab_mapa, tab_graficos, tab_tabela, tab_api, tab_conta = st.tabs([
+tab_mapa, tab_graficos, tab_tabela, tab_api, tab_conta, tab_relatorios = st.tabs([
     "📍 Mapa Geoespacial",
     "📊 Gráficos & Tendências",
     "📋 Tabela de Ocorrências",
     "🔌 Backend API REST",
     "👤 Conta & Acesso",
+    "📁 Meus relatórios",
 ])
 
 with tab_mapa:
@@ -326,6 +328,9 @@ GET  /api/auth/health            -> Status do subsistema de autenticação
 
 with tab_conta:
     render_auth_tab()
+
+with tab_relatorios:
+    render_meus_relatorios(client)
 
 st.sidebar.divider()
 st.sidebar.caption("Dados mais recente: 08/2026 | Fonte: SSP-DF (Secretaria de Segurança Pública do Distrito Federal) | Projeto acadêmico UCB - Soluções Computacionais (8º Semestre)")
