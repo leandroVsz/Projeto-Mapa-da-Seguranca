@@ -35,6 +35,7 @@ xlrd>=2.0.0            # Leitura de planilhas .xls (arquivos agregados antigos)
 # --- Testes (python -m pytest) ---
 pytest>=8.0.0          # Framework de testes unitários (suíte em tests/)
 pytest-cov>=5.0.0      # Medição de cobertura dos testes
+httpx>=0.27.0          # Cliente HTTP usado pelo TestClient do FastAPI (testes funcionais)
 
 plotly>=5.20.0         # Gráficos interativos de vários tipos (aba Gráficos)
 matplotlib>=3.8.0      # Geração do PDF exportado dos gráficos
