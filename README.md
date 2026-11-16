@@ -188,6 +188,37 @@ A carga (`db/load_csv.py`) é **idempotente** (upsert): pode ser rodada sempre q
 
 ---
 
+## 📁 Relatórios Salvos (HU08)
+
+Usuários autenticados podem **salvar a configuração de um gráfico** (dimensão de análise, tipo de gráfico, Top N e filtros aplicados) na própria conta, e revisitá-la depois na aba **"📁 Meus relatórios"**. O relatório guarda apenas a *configuração*, nunca uma imagem: ao reabrir, o gráfico é **regenerado com os dados atuais**, usando os mesmos filtros salvos.
+
+A partir da tela "Meus relatórios", o usuário pode:
+- Ver a lista dos próprios relatórios salvos (título, dimensão, tipo de gráfico e filtros usados)
+- Expandir um relatório para visualizar o gráfico regenerado
+- Baixar o relatório em **CSV** ou **PDF**
+- **Excluir** um relatório salvo, com etapa de confirmação
+
+Cada relatório pertence a um único usuário: a listagem, o download e a exclusão são sempre filtrados pelo usuário autenticado, e nunca por um id vindo do cliente — um usuário nunca acessa nem apaga relatório de outra conta.
+
+### Modelo de dados
+
+| Tabela | Papel | Colunas principais |
+|---|---|---|
+| `auth.relatorio_salvo` | Configuração de gráfico salva pelo usuário | `id`, `usuario_id` (FK, `ON DELETE CASCADE`), `titulo` (único por usuário), `dimensao` (`por_regiao`\|`por_natureza`\|`por_mes`\|`por_ano`), `tipo_grafico`, `top_n` (3–30), `filtros` (JSONB), `criado_em` |
+
+### Validar / testar
+
+```bash
+# Testes de validação e serialização (não tocam no banco)
+pytest tests/test_relatorio_service.py -v
+
+# Ciclo completo contra o banco real: salvar, listar, isolamento entre
+# usuários, título duplicado, validações, excluir (cria e limpa dados próprios)
+python -m db.relatorio_smoke_test
+```
+
+---
+
 ## 🗺️ Regiões Administrativas e Dados do DF
 
 O sistema conta com dados e coordenadas representativas das principais Regiões Administrativas do DF:
@@ -220,5 +251,8 @@ O sistema conta com dados e coordenadas representativas das principais Regiões 
 | `GET` | `/api/detalhe-regiao` | KPIs e distribuições de UMA RA (usado ao clicar numa região no mapa) |
 | `POST`| `/api/consolidar` | Executa a unificação de arquivos brutos anuais (ETL) |
 | `POST`| `/api/carga-db` | Carrega o CSV consolidado + contornos no PostgreSQL |
+| `POST`| `/api/relatorios` | Salva a configuração de um gráfico na conta do usuário autenticado (requer `X-Auth-Token`) |
+| `GET` | `/api/relatorios` | Lista os relatórios salvos do usuário autenticado (requer `X-Auth-Token`) |
+| `DELETE`| `/api/relatorios/{id}` | Exclui um relatório salvo do próprio usuário (requer `X-Auth-Token`) |
 
 Documentação interativa Swagger disponível em: **[http://localhost:8000/docs](http://localhost:8000/docs)**.
