@@ -120,6 +120,7 @@ class TestH3ControleELiberdade:
             "📋 Tabela de Ocorrências",
             "🔌 Backend API REST",
             "👤 Conta & Acesso",
+            "📁 Meus relatórios",
         ]
 
     def test_usuario_pode_ir_para_registro_e_voltar_ao_login(self, app_interativo):
@@ -260,8 +261,9 @@ class TestH7Flexibilidade:
 # 8. Design estético e minimalista
 # ---------------------------------------------------------------------------
 class TestH8Design:
-    def test_interface_organizada_em_cinco_abas_e_quatro_kpis(self, app):
-        assert len(app.tabs) == 5
+    def test_interface_organizada_em_seis_abas_e_quatro_kpis(self, app):
+        # 6 abas desde a adição de "📁 Meus relatórios" (HU08)
+        assert len(app.tabs) == 6
         assert len(app.metric) == 4
 
     def test_graficos_secundarios_ficam_recolhidos(self, app):
