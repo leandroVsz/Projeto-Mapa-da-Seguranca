@@ -77,6 +77,41 @@ def _bbox_de_features(features: List[Dict[str, Any]]) -> Optional[List[float]]:
     return bb if bb[0] <= bb[2] else None
 
 
+def _centroide_de_geometry(geometry: Dict[str, Any]) -> Optional[tuple]:
+    """(lon, lat) do centro do bbox do contorno — usado quando a RA não tem
+    centroide vindo da API."""
+    bb = _bbox_de_features([{"geometry": geometry}])
+    if not bb:
+        return None
+    return ((bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2)
+
+
+def _rotulos_ras(
+    dados_coropleto: List[Dict[str, Any]],
+    regioes_meta: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    """Nome de cada RA posicionado no centroide (só front: usa os dados que
+    já vieram em /regioes + /coropleto)."""
+    centros = {}
+    for meta in regioes_meta or []:
+        lat, lon = meta.get("latitude"), meta.get("longitude")
+        if lat is not None and lon is not None:
+            centros[meta.get("nome")] = [float(lon), float(lat)]
+
+    rotulos = []
+    for feat in dados_coropleto:
+        nome = feat.get("nome")
+        posicao = centros.get(nome) or _centroide_de_geometry(feat.get("geometry"))
+        if not nome or not posicao:
+            continue
+        rotulos.append({
+            "nome": nome,
+            "posicao": list(posicao),
+            "tem_dados": int(feat.get("total", 0)) > 0,
+        })
+    return rotulos
+
+
 def _zoom_para_bbox(bb: List[float], largura_px: int = 900, altura_px: int = 600) -> float:
     """Zoom que enquadra o bbox na projeção Web Mercator."""
     span_lon = max(bb[2] - bb[0], 1e-4) * 1.08
@@ -177,6 +212,9 @@ def render_map(
                 pickable=False,
             ))
 
+    # Nome da RA escrito sobre a própria região (só no coropleto)
+    rotulos = _rotulos_ras(dados_coropleto, regioes_meta) if modo_coropleto else []
+
     if pontos_calor:
         df_pts = pd.DataFrame(pontos_calor, columns=["latitude", "longitude", "peso"])
         if "Heatmap" in tipo_camada:
@@ -202,6 +240,25 @@ def render_map(
                 extruded=True,
                 coverage=1,
             ))
+
+    if rotulos:
+        layers.append(pdk.Layer(
+            "TextLayer",
+            id="rotulos-ra",
+            data=rotulos,
+            get_position="posicao",
+            get_text="nome",
+            get_size=10,
+            size_units="pixels",
+            get_color=[255, 255, 255, 235],
+            get_text_anchor="middle",
+            get_alignment_baseline="center",
+            font_family="Arial, sans-serif",
+            outline_width=2,
+            outline_color=[30, 30, 30, 210],
+            billboard=False,
+            pickable=False,
+        ))
 
     if not layers:
         st.warning("Nenhum contorno de RA disponível. Configure o banco "
@@ -274,6 +331,7 @@ def render_map(
         st.caption(
             "🎨 **Coropleto**: intensidade por RA — quanto mais vermelho, mais ocorrências "
             "nos filtros selecionados. **Cinzas** = RAs sem registros nos filtros atuais. "
+            "Os nomes das RAs aparecem sobre o mapa. "
             "Passe o mouse para ver o total e **clique na RA** para abrir o painel de detalhe."
         )
     else:

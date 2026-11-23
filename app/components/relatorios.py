@@ -9,8 +9,13 @@ e gerar_csv/gerar_pdf de chart_export.py, como pede o Passo 6.
 import streamlit as st
 
 from app.auth_ui import is_logado
-from app.components.chart_export import gerar_csv, gerar_pdf, nome_arquivo
-from app.components.charts import DIMENSOES, criar_figura, montar_dataframe
+from app.components.chart_export import gerar_csv, nome_arquivo
+from app.components.charts import (
+    DIMENSOES,
+    criar_figura,
+    gerar_pdf_cached,
+    montar_dataframe,
+)
 
 _DIMENSAO_LABEL = {v: k for k, v in DIMENSOES.items()}
 
@@ -86,7 +91,7 @@ def render_meus_relatorios(client):
                 )
                 b2.download_button(
                     "⬇️ PDF",
-                    data=gerar_pdf(df, rel["tipo_grafico"], rel["titulo"]),
+                    data=gerar_pdf_cached(df, rel["tipo_grafico"], rel["titulo"]),
                     file_name=nome_arquivo(rel["titulo"], rel["tipo_grafico"], "pdf"),
                     mime="application/pdf",
                     key=f"pdf_{rid}",
