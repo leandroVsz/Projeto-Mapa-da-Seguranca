@@ -4,6 +4,7 @@ Servidor FastAPI principal para o backend do Mapa da Segurança DF.
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from pathlib import Path
 import sys
 
@@ -39,6 +40,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# GeoJSON das RAs tem ~340 KB e é pedido a cada rerun do dashboard:
+# comprimir reduz o tráfego em ~85%.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 # Registra rotas
 app.include_router(regioes_router)

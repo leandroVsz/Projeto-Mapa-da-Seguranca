@@ -24,6 +24,9 @@ class ApiClient:
         # Lido em tempo de chamada: permite que api/embedded.py redirecione
         # a porta em runtime (API embutida no deploy em nuvem).
         self.base_url = (base_url or DEFAULT_API_URL).rstrip("/")
+        # Session reaproveita a conexão TCP (keep-alive) entre chamadas; sem
+        # isso cada requisição abria um socket novo.
+        self._session = requests.Session()
         self._fallback_service = DataService()
         self._api_online = None
         self._ultima_tentativa = 0.0
@@ -31,7 +34,7 @@ class ApiClient:
     def check_health(self) -> Dict[str, Any]:
         """Verifica se a API FastAPI está ativa."""
         try:
-            res = requests.get(f"{self.base_url}/api/health", timeout=1.5)
+            res = self._session.get(f"{self.base_url}/api/health", timeout=1.5)
             if res.status_code == 200:
                 self._api_online = True
                 return {"online": True, "data": res.json()}
@@ -62,7 +65,7 @@ class ApiClient:
         self._tentar_api_online_novamente()
         if self.is_online():
             try:
-                res = requests.get(f"{self.base_url}/api/regioes", timeout=2.5)
+                res = self._session.get(f"{self.base_url}/api/regioes", timeout=2.5)
                 if res.status_code == 200:
                     return res.json()
             except Exception:
@@ -74,7 +77,7 @@ class ApiClient:
         self._tentar_api_online_novamente()
         if self.is_online():
             try:
-                res = requests.get(f"{self.base_url}/api/filtros", timeout=2.5)
+                res = self._session.get(f"{self.base_url}/api/filtros", timeout=2.5)
                 if res.status_code == 200:
                     return res.json()
             except Exception:
@@ -101,7 +104,7 @@ class ApiClient:
                     params["eixo"] = eixos
                 if anos:
                     params["ano"] = anos
-                res = requests.get(f"{self.base_url}/api/coropleto", params=params, timeout=4.0)
+                res = self._session.get(f"{self.base_url}/api/coropleto", params=params, timeout=4.0)
                 if res.status_code == 200:
                     return res.json()
             except Exception:
@@ -136,7 +139,7 @@ class ApiClient:
                     params["eixo"] = eixos
                 if anos:
                     params["ano"] = anos
-                res = requests.get(f"{self.base_url}/api/heatmap", params=params, timeout=4.0)
+                res = self._session.get(f"{self.base_url}/api/heatmap", params=params, timeout=4.0)
                 if res.status_code == 200:
                     return res.json().get("pontos", [])
             except Exception:
@@ -164,7 +167,7 @@ class ApiClient:
                     params["eixo"] = eixos
                 if anos:
                     params["ano"] = anos
-                res = requests.get(f"{self.base_url}/api/detalhe-regiao", params=params, timeout=4.0)
+                res = self._session.get(f"{self.base_url}/api/detalhe-regiao", params=params, timeout=4.0)
                 if res.status_code == 200:
                     return res.json()
             except Exception:
@@ -193,7 +196,7 @@ class ApiClient:
                     params["eixo"] = eixos
                 if anos:
                     params["ano"] = anos
-                res = requests.get(f"{self.base_url}/api/stats", params=params, timeout=3.0)
+                res = self._session.get(f"{self.base_url}/api/stats", params=params, timeout=3.0)
                 if res.status_code == 200:
                     return res.json()
             except Exception:
@@ -227,7 +230,7 @@ class ApiClient:
                 if busca:
                     params["busca"] = busca
 
-                res = requests.get(f"{self.base_url}/api/ocorrencias", params=params, timeout=4.0)
+                res = self._session.get(f"{self.base_url}/api/ocorrencias", params=params, timeout=4.0)
                 if res.status_code == 200:
                     return res.json().get("ocorrencias", [])
             except Exception:
@@ -277,7 +280,7 @@ class ApiClient:
         if not self.is_online():
             return {"ok": False, "erro": "API indisponível no momento. Tente novamente mais tarde."}
         try:
-            res = requests.post(
+            res = self._session.post(
                 f"{self.base_url}/api/relatorios",
                 json={
                     "titulo": titulo,
@@ -308,7 +311,7 @@ class ApiClient:
         if not self.is_online():
             return {"ok": False, "erro": "API indisponível no momento. Tente novamente mais tarde."}
         try:
-            res = requests.get(
+            res = self._session.get(
                 f"{self.base_url}/api/relatorios",
                 headers={"X-Auth-Token": token},
                 timeout=4.0,
@@ -332,7 +335,7 @@ class ApiClient:
         if not self.is_online():
             return {"ok": False, "erro": "API indisponível no momento. Tente novamente mais tarde."}
         try:
-            res = requests.delete(
+            res = self._session.delete(
                 f"{self.base_url}/api/relatorios/{relatorio_id}",
                 headers={"X-Auth-Token": token},
                 timeout=4.0,

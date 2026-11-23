@@ -109,25 +109,44 @@ class DbService:
     # ------------------------------------------------------------------
     @db_query
     def get_opcoes_filtros(self) -> Dict[str, List[Any]]:
+        # Uma única ida ao banco (UNION ALL) em vez de 4 consultas
+        # sequenciais — cada consulta custa um round-trip de rede.
         with SessionLocal() as s:
-            regioes = [r[0] for r in s.execute(text(
-                "SELECT DISTINCT r.nome FROM ocorrencia_mensal f "
-                "JOIN regiao_administrativa r ON r.id = f.regiao_id ORDER BY 1"
-            )).all()]
-            naturezas = [r[0] for r in s.execute(text(
-                "SELECT DISTINCT t.nome FROM ocorrencia_mensal f "
-                "JOIN tipo_crime t ON t.id = f.tipo_crime_id ORDER BY 1"
-            )).all()]
-            eixos = [r[0] for r in s.execute(text(
-                "SELECT DISTINCT t.eixo_indicador FROM ocorrencia_mensal f "
-                "JOIN tipo_crime t ON t.id = f.tipo_crime_id ORDER BY 1"
-            )).all()]
-            anos = [int(r[0]) for r in s.execute(text(
-                "SELECT DISTINCT ano FROM ocorrencia_mensal ORDER BY 1 DESC"
-            )).all()]
-        return {"regioes": regioes, "naturezas": naturezas,
-                "eixos": eixos, "anos": anos,
-                "periodos": []}
+            rows = s.execute(text("""
+                SELECT 'regiao' AS tipo, r.nome::text AS valor
+                FROM ocorrencia_mensal f
+                JOIN regiao_administrativa r ON r.id = f.regiao_id
+                GROUP BY r.nome
+                UNION ALL
+                SELECT 'natureza', t.nome::text
+                FROM ocorrencia_mensal f
+                JOIN tipo_crime t ON t.id = f.tipo_crime_id
+                GROUP BY t.nome
+                UNION ALL
+                SELECT 'eixo', t.eixo_indicador::text
+                FROM ocorrencia_mensal f
+                JOIN tipo_crime t ON t.id = f.tipo_crime_id
+                WHERE t.eixo_indicador IS NOT NULL
+                GROUP BY t.eixo_indicador
+                UNION ALL
+                SELECT 'ano', f.ano::text
+                FROM ocorrencia_mensal f
+                GROUP BY f.ano
+            """)).all()
+
+        valores: Dict[str, List[Any]] = {
+            "regiao": [], "natureza": [], "eixo": [], "ano": [],
+        }
+        for tipo, valor in rows:
+            valores[tipo].append(valor)
+
+        return {
+            "regioes": sorted(valores["regiao"]),
+            "naturezas": sorted(valores["natureza"]),
+            "eixos": sorted(valores["eixo"]),
+            "anos": sorted((int(a) for a in valores["ano"]), reverse=True),
+            "periodos": [],
+        }
 
     # ------------------------------------------------------------------
     # Coropleto: intensidade por RA
@@ -273,74 +292,58 @@ class DbService:
         regioes=None, naturezas=None, eixos=None, anos=None,
         tipo_registro: str = "OCORRENCIA",
     ) -> Dict[str, Any]:
+        # Todas as dimensões em UMA consulta (GROUPING SETS): antes eram 6
+        # consultas sequenciais, ou seja, 6 round-trips até o banco.
         with SessionLocal() as s:
             params: Dict[str, Any] = {}
             where = self._where(regioes, naturezas, eixos, anos, tipo_registro, params)
-
-            total = int(s.execute(text(f"""
-                SELECT COALESCE(SUM(f.quantidade), 0) FROM ocorrencia_mensal f
+            linhas = s.execute(text(f"""
+                SELECT r.nome AS ra, t.nome AS crime, f.ano AS ano, f.mes AS mes,
+                       SUM(f.quantidade) AS q
+                FROM ocorrencia_mensal f
                 JOIN regiao_administrativa r ON r.id = f.regiao_id
                 JOIN tipo_crime t ON t.id = f.tipo_crime_id
                 {where}
-            """), params).scalar() or 0)
+                GROUP BY GROUPING SETS ((r.nome), (t.nome), (f.ano), (f.mes))
+            """), params).all()
 
-            if total == 0:
-                return {"total_ocorrencias": 0, "ra_mais_afetada": "N/A",
-                        "crime_mais_frequente": "N/A", "por_natureza": {},
-                        "por_regiao": {}, "por_ano": {}, "por_mes": {}}
+        por_regiao: Dict[str, int] = {}
+        por_natureza: Dict[str, int] = {}
+        por_ano: Dict[int, int] = {}
+        por_mes: Dict[int, int] = {}
+        for ra, crime, ano, mes, quantidade in linhas:
+            if ra is not None:
+                por_regiao[str(ra)] = int(quantidade)
+            elif crime is not None:
+                por_natureza[str(crime)] = int(quantidade)
+            elif ano is not None:
+                por_ano[int(ano)] = int(quantidade)
+            elif mes is not None:
+                por_mes[int(mes)] = int(quantidade)
 
-            ra = s.execute(text(f"""
-                SELECT r.nome, SUM(f.quantidade) q FROM ocorrencia_mensal f
-                JOIN regiao_administrativa r ON r.id = f.regiao_id
-                JOIN tipo_crime t ON t.id = f.tipo_crime_id
-                {where} {'AND' if where else 'WHERE'} r.nome <> 'Distrito Federal'
-                GROUP BY r.nome ORDER BY q DESC LIMIT 1
-            """), params).first()
+        total = sum(por_mes.values())
+        if total == 0:
+            return {"total_ocorrencias": 0, "ra_mais_afetada": "N/A",
+                    "crime_mais_frequente": "N/A", "por_natureza": {},
+                    "por_regiao": {}, "por_ano": {}, "por_mes": {}}
 
-            crime = s.execute(text(f"""
-                SELECT t.nome, SUM(f.quantidade) q FROM ocorrencia_mensal f
-                JOIN regiao_administrativa r ON r.id = f.regiao_id
-                JOIN tipo_crime t ON t.id = f.tipo_crime_id
-                {where} GROUP BY t.nome ORDER BY q DESC LIMIT 1
-            """), params).first()
-
-            por_regiao = {r[0]: int(r[1]) for r in s.execute(text(f"""
-                SELECT r.nome, SUM(f.quantidade) q FROM ocorrencia_mensal f
-                JOIN regiao_administrativa r ON r.id = f.regiao_id
-                JOIN tipo_crime t ON t.id = f.tipo_crime_id
-                {where} {'AND' if where else 'WHERE'} r.nome <> 'Distrito Federal'
-                GROUP BY r.nome ORDER BY q DESC
-            """), params).all()}
-
-            por_natureza = {r[0]: int(r[1]) for r in s.execute(text(f"""
-                SELECT t.nome, SUM(f.quantidade) q FROM ocorrencia_mensal f
-                JOIN regiao_administrativa r ON r.id = f.regiao_id
-                JOIN tipo_crime t ON t.id = f.tipo_crime_id
-                {where} GROUP BY t.nome ORDER BY q DESC
-            """), params).all()}
-
-            por_ano = {int(r[0]): int(r[1]) for r in s.execute(text(f"""
-                SELECT f.ano, SUM(f.quantidade) q FROM ocorrencia_mensal f
-                JOIN regiao_administrativa r ON r.id = f.regiao_id
-                JOIN tipo_crime t ON t.id = f.tipo_crime_id
-                {where} GROUP BY f.ano ORDER BY f.ano
-            """), params).all()}
-
-            por_mes = {int(r[0]): int(r[1]) for r in s.execute(text(f"""
-                SELECT f.mes, SUM(f.quantidade) q FROM ocorrencia_mensal f
-                JOIN regiao_administrativa r ON r.id = f.regiao_id
-                JOIN tipo_crime t ON t.id = f.tipo_crime_id
-                {where} GROUP BY f.mes ORDER BY f.mes
-            """), params).all()}
+        # 'Distrito Federal' é o agregado estadual (não é uma RA): não
+        # entra na distribuição por região nem no ranking.
+        por_regiao = dict(sorted(
+            ((k, v) for k, v in por_regiao.items() if k != "Distrito Federal"),
+            key=lambda kv: kv[1], reverse=True,
+        ))
+        por_natureza = dict(sorted(por_natureza.items(),
+                                   key=lambda kv: kv[1], reverse=True))
 
         return {
             "total_ocorrencias": total,
-            "ra_mais_afetada": ra[0] if ra else "N/A",
-            "crime_mais_frequente": crime[0] if crime else "N/A",
+            "ra_mais_afetada": next(iter(por_regiao), "N/A"),
+            "crime_mais_frequente": next(iter(por_natureza), "N/A"),
             "por_natureza": por_natureza,
             "por_regiao": por_regiao,
-            "por_ano": por_ano,
-            "por_mes": por_mes,
+            "por_ano": dict(sorted(por_ano.items())),
+            "por_mes": dict(sorted(por_mes.items())),
         }
 
     # ------------------------------------------------------------------
@@ -404,21 +407,18 @@ class DbService:
     # ------------------------------------------------------------------
     def health(self) -> Dict[str, Any]:
         try:
+            # Os 4 contadores em uma única consulta (1 round-trip).
             with SessionLocal() as s:
-                total = int(s.execute(text(
-                    "SELECT COUNT(*) FROM ocorrencia_mensal"
-                )).scalar() or 0)
-                regioes = int(s.execute(text(
-                    "SELECT COUNT(*) FROM regiao_administrativa"
-                )).scalar() or 0)
-                crimes = int(s.execute(text(
-                    "SELECT COUNT(*) FROM tipo_crime"
-                )).scalar() or 0)
-                com_contorno = int(s.execute(text(
-                    "SELECT COUNT(*) FROM regiao_administrativa WHERE contorno IS NOT NULL"
-                )).scalar() or 0)
-            return {"db_online": True, "total_registros": total,
-                    "total_regioes": regioes, "com_contorno": com_contorno,
-                    "total_crimes": crimes}
+                total, regioes, crimes, com_contorno = s.execute(text("""
+                    SELECT (SELECT COUNT(*) FROM ocorrencia_mensal),
+                           (SELECT COUNT(*) FROM regiao_administrativa),
+                           (SELECT COUNT(*) FROM tipo_crime),
+                           (SELECT COUNT(*) FROM regiao_administrativa
+                             WHERE contorno IS NOT NULL)
+                """)).one()
+            return {"db_online": True, "total_registros": int(total),
+                    "total_regioes": int(regioes),
+                    "com_contorno": int(com_contorno),
+                    "total_crimes": int(crimes)}
         except SQLAlchemyError as e:
             return {"db_online": False, "erro": str(e)[:200]}

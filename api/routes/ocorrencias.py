@@ -182,6 +182,10 @@ def carga_db():
         modulo = importlib.import_module("db.load_csv")
         importlib.reload(modulo)
         resumo = modulo.carregar_base()
+        # Contornos/opções de filtro mudaram: descarta o cache de leitura.
+        from api.services.cache_ttl import invalidar
+
+        invalidar()
         return {"status": "sucesso", "resumo": resumo}
     except Exception as e:
         return {"status": "erro", "mensagem": str(e)[:300]}

@@ -69,6 +69,13 @@ def criar_figura(df: pd.DataFrame, tipo: str, titulo: str):
     return fig
 
 
+@st.cache_data(show_spinner=False, max_entries=32)
+def gerar_pdf_cached(df: pd.DataFrame, tipo: str, titulo: str) -> bytes:
+    """O PDF (matplotlib) era montado a cada rerun só para alimentar o
+    botão de download; agora só é gerado quando o gráfico muda."""
+    return gerar_pdf(df, tipo, titulo)
+
+
 def _render_visao_geral(stats: dict):
     """Os 4 gráficos fixos originais."""
     c1, c2 = st.columns(2)
@@ -179,7 +186,7 @@ def render_charts(stats: dict, client=None, filtros: Optional[dict] = None):
         )
         b2.download_button(
             "⬇️ Exportar PDF",
-            data=gerar_pdf(df, tipo, titulo),
+            data=gerar_pdf_cached(df, tipo, titulo),
             file_name=nome_arquivo(titulo, tipo, "pdf"),
             mime="application/pdf",
             key="exportar_pdf",

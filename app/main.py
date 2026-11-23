@@ -54,6 +54,76 @@ if EMBED_API:
 client = get_api_client()
 
 
+# ---------------------------------------------------------------------------
+# Cache das leituras
+# ---------------------------------------------------------------------------
+# O Streamlit reexecuta o script inteiro a cada interação (clique no mapa,
+# filtro, aba...). Sem cache, UMA ação disparava novamente todas as consultas
+# (/health, /filtros, /regioes, /heatmap, /coropleto, /stats, /ocorrencias) —
+# cada uma indo até o banco na nuvem. Com o cache, só o que muda é buscado.
+
+def _chave(*listas) -> tuple:
+    """Converte listas de filtro em tuplas estáveis para a chave do cache."""
+    return tuple(tuple(lista or ()) for lista in listas)
+
+
+@st.cache_data(ttl=15, show_spinner=False)
+def _status_api() -> dict:
+    return get_api_client().check_health()
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _regioes_geo() -> list:
+    return get_api_client().get_regioes()
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _opcoes_filtros() -> dict:
+    return get_api_client().get_filtros()
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def _dados_filtrados(regioes: tuple, naturezas: tuple, eixos: tuple,
+                     anos: tuple) -> dict:
+    """Heatmap, coropleto e estatísticas de um mesmo conjunto de filtros."""
+    api = get_api_client()
+    kwargs = {
+        "regioes": list(regioes) or None,
+        "naturezas": list(naturezas) or None,
+        "eixos": list(eixos) or None,
+        "anos": list(anos) or None,
+    }
+    return {
+        "heatmap": api.get_heatmap(**kwargs),
+        "coropleto": api.get_coropleto(**kwargs),
+        "stats": api.get_stats(**kwargs),
+    }
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def _detalhe_regiao(regiao: str, naturezas: tuple, eixos: tuple,
+                    anos: tuple) -> dict:
+    return get_api_client().get_detalhe_regiao(
+        regiao=regiao,
+        naturezas=list(naturezas) or None,
+        eixos=list(eixos) or None,
+        anos=list(anos) or None,
+    )
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def _listar_ocorrencias(regioes: tuple, naturezas: tuple, eixos: tuple,
+                        anos: tuple, busca: str, limite: int) -> list:
+    return get_api_client().get_ocorrencias(
+        regioes=list(regioes) or None,
+        naturezas=list(naturezas) or None,
+        eixos=list(eixos) or None,
+        anos=list(anos) or None,
+        busca=busca or None,
+        limite=limite,
+    )
+
+
 def _selecionar_regiao(nome_ra: str):
     """Callback do clique no mapa: guarda a RA clicada para o painel de detalhe."""
     st.session_state["ra_detalhe"] = nome_ra
@@ -69,7 +139,7 @@ st.sidebar.title("🛡️ Mapa da Segurança DF")
 st.sidebar.caption("Universidade Católica de Brasília | Soluções Computacionais")
 
 # Status do Backend (API REST)
-api_status = client.check_health()
+api_status = _status_api()
 if api_status["online"]:
     st.sidebar.success("🟢 **Backend API Conectado** (`:8000`)")
     st.sidebar.markdown("[📖 Abrir Swagger /docs](http://localhost:8000/docs)")
@@ -92,8 +162,8 @@ else:
 st.sidebar.divider()
 st.sidebar.subheader("🔍 Filtros de Análise")
 
-opcoes = client.get_filtros()
-regioes_meta = client.get_regioes()
+opcoes = _opcoes_filtros()
+regioes_meta = _regioes_geo()
 
 # Filtro por Região Administrativa
 ra_selecionadas = st.sidebar.multiselect(
@@ -148,26 +218,12 @@ estilo_escolhido = st.sidebar.select_slider(
     value="Claro",
 )
 
-pontos_calor = client.get_heatmap(
-    regioes=ra_selecionadas if ra_selecionadas else None,
-    naturezas=crimes_selecionados if crimes_selecionados else None,
-    eixos=eixos_selecionados if eixos_selecionados else None,
-    anos=anos_selecionados if anos_selecionados else None,
-)
-
-coropleto = client.get_coropleto(
-    regioes=ra_selecionadas if ra_selecionadas else None,
-    naturezas=crimes_selecionados if crimes_selecionados else None,
-    eixos=eixos_selecionados if eixos_selecionados else None,
-    anos=anos_selecionados if anos_selecionados else None,
-)
-
-stats = client.get_stats(
-    regioes=ra_selecionadas if ra_selecionadas else None,
-    naturezas=crimes_selecionados if crimes_selecionados else None,
-    eixos=eixos_selecionados if eixos_selecionados else None,
-    anos=anos_selecionados if anos_selecionados else None,
-)
+filtros_chave = _chave(ra_selecionadas, crimes_selecionados,
+                       eixos_selecionados, anos_selecionados)
+_dados = _dados_filtrados(*filtros_chave)
+pontos_calor = _dados["heatmap"]
+coropleto = _dados["coropleto"]
+stats = _dados["stats"]
 
 st.title("🛡️ Mapa da Segurança Pública - Distrito Federal")
 st.markdown("Visualização geoespacial da criminalidade baseada em dados abertos da Secretaria de Segurança Pública (SSP-DF).")
@@ -203,11 +259,11 @@ with tab_mapa:
     # Painel de detalhe da RA clicada no mapa
     ra_clicada = st.session_state.get("ra_detalhe")
     if ra_clicada:
-        detalhe = client.get_detalhe_regiao(
-            regiao=ra_clicada,
-            naturezas=crimes_selecionados if crimes_selecionados else None,
-            eixos=eixos_selecionados if eixos_selecionados else None,
-            anos=anos_selecionados if anos_selecionados else None,
+        detalhe = _detalhe_regiao(
+            ra_clicada,
+            tuple(crimes_selecionados or ()),
+            tuple(eixos_selecionados or ()),
+            tuple(anos_selecionados or ()),
         )
         with st.container(border=True):
             col_tit, col_fechar = st.columns([0.85, 0.15])
@@ -269,13 +325,8 @@ with tab_tabela:
     st.subheader("Registros Detalhados de Ocorrências")
     termo = st.text_input("🔍 Buscar por crime ou RA:", "")
 
-    ocorrencias = client.get_ocorrencias(
-        regioes=ra_selecionadas if ra_selecionadas else None,
-        naturezas=crimes_selecionados if crimes_selecionados else None,
-        eixos=eixos_selecionados if eixos_selecionados else None,
-        anos=anos_selecionados if anos_selecionados else None,
-        busca=termo if termo else None,
-        limite=600,
+    ocorrencias = _listar_ocorrencias(
+        *filtros_chave, termo or "", 600,
     )
 
     if ocorrencias:
