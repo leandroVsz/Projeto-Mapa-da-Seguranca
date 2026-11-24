@@ -7,7 +7,7 @@
 # =============================================================
 
 # --- Interface Web (Dashboard Streamlit) ---
-streamlit>=1.36        # Framework do dashboard (renderiza PyDeck com MapLibre)
+streamlit>=1.40        # Framework do dashboard (PyDeck/MapLibre; >=1.40 p/ st.segmented_control)
 pydeck>=0.8.0          # Camadas de mapa: coropleto, heatmap 2D, hexágonos 3D
 pandas>=2.0.0          # Manipulação de dados/CSV (fallback e pipeline ETL)
 numpy>=1.24.0          # Base numérica do pandas (geração de dados de amostra)
@@ -36,6 +36,9 @@ xlrd>=2.0.0            # Leitura de planilhas .xls (arquivos agregados antigos)
 pytest>=8.0.0          # Framework de testes unitários (suíte em tests/)
 pytest-cov>=5.0.0      # Medição de cobertura dos testes
 httpx>=0.27.0          # Cliente HTTP usado pelo TestClient do FastAPI (testes funcionais)
+
+# --- Geolocalização do dispositivo (botão 'Usar minha localização') ---
+streamlit-geolocation>=0.0.10  # Componente que pede o GPS/permissão ao navegador
 
 plotly>=5.20.0         # Gráficos interativos de vários tipos (aba Gráficos)
 matplotlib>=3.8.0      # Geração do PDF exportado dos gráficos

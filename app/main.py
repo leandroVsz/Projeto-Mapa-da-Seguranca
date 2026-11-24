@@ -32,6 +32,7 @@ from app.components.metrics import render_metrics
 from app.components.map_view import render_map, ESTILOS_MAPA
 from app.components.charts import render_charts
 from app.components.relatorios import render_meus_relatorios
+from app.components.localizar import render_localizar
 from api.embedded import iniciar_api_embutida
 
 # Configuração da página
@@ -166,10 +167,16 @@ opcoes = _opcoes_filtros()
 regioes_meta = _regioes_geo()
 
 # Filtro por Região Administrativa
+# Se a consulta por CEP/endereço/GPS achou uma RA, aplica-a ao filtro ANTES de
+# criar o widget (o Streamlit não permite alterar o valor depois de criado).
+_ra_pendente = st.session_state.pop("ra_filtro_pendente", None)
+if _ra_pendente and _ra_pendente in opcoes.get("regioes", []):
+    st.session_state["filtro_ra"] = [_ra_pendente]
+
 ra_selecionadas = st.sidebar.multiselect(
     "Região Administrativa (RA)",
     options=opcoes.get("regioes", []),
-    default=[],
+    key="filtro_ra",
     placeholder="Todas as regiões do DF",
 )
 
@@ -242,7 +249,17 @@ tab_mapa, tab_graficos, tab_tabela, tab_api, tab_conta, tab_relatorios = st.tabs
 ])
 
 with tab_mapa:
+    render_localizar(client, _selecionar_regiao)
+
     regiao_foco = ra_selecionadas[0] if (ra_selecionadas and len(ra_selecionadas) == 1) else None
+
+    # Marcador do local achado pela consulta (CEP/endereço/GPS): só aparece enquanto
+    # o filtro de RA está na região encontrada.
+    _res_loc = st.session_state.get("loc_resultado")
+    ponto_consulta = None
+    if _res_loc and "erro" not in _res_loc and ra_selecionadas == [_res_loc.get("regiao")]:
+        ponto_consulta = {"latitude": _res_loc["latitude"], "longitude": _res_loc["longitude"]}
+
     render_map(
         pontos_calor=pontos_calor,
         ocorrencias=[],
@@ -254,6 +271,7 @@ with tab_mapa:
         estilo_mapa=ESTILOS_MAPA.get(estilo_escolhido),
         top_naturezas=coropleto.get("top_naturezas", {}),
         detalhe_callback=_selecionar_regiao,
+        ponto_consulta=ponto_consulta,
     )
 
     # Painel de detalhe da RA clicada no mapa
@@ -361,6 +379,7 @@ GET  /api/filtros        -> Opções dos filtros (RAs, crimes, eixos, anos)
 GET  /api/heatmap        -> Ponto por RA [lat, lon, peso]
 GET  /api/coropleto      -> Intensidade por RA + top naturezas (tooltip)
 GET  /api/detalhe-regiao -> KPIs e distribuições de uma RA
+GET  /api/localizar       -> RA por CEP, endereço ou coordenadas (GPS)
 GET  /api/ocorrencias    -> Listagem agregada RA/crime/ano/mês com busca
 GET  /api/stats          -> Indicadores agregados e KPIs
 POST /api/consolidar     -> Consolida as planilhas SSP-DF (ETL)

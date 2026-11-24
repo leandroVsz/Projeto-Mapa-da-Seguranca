@@ -176,6 +176,45 @@ class ApiClient:
             regiao=regiao, naturezas=naturezas, eixos=eixos, anos=anos,
         )
 
+    def localizar_regiao(
+        self,
+        cep: Optional[str] = None,
+        endereco: Optional[str] = None,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """Descobre a RA por CEP, endereço ou coordenadas.
+
+        Retorna o dicionário da API ou {"erro": mensagem}. Se a API estiver
+        offline, chama o serviço diretamente (mesma lógica, sem HTTP).
+        """
+        from api.services.localizacao_service import LocalizacaoError, localizar_regiao
+
+        params: Dict[str, Any] = {}
+        for chave, valor in (
+            ("cep", cep), ("endereco", endereco),
+            ("latitude", latitude), ("longitude", longitude),
+        ):
+            if valor not in (None, ""):
+                params[chave] = valor
+
+        self._tentar_api_online_novamente()
+        if self.is_online():
+            try:
+                res = requests.get(f"{self.base_url}/api/localizar", params=params, timeout=15.0)
+                if res.status_code == 200:
+                    return res.json()
+                try:
+                    return {"erro": res.json().get("detail", "Falha na consulta.")}
+                except ValueError:
+                    return {"erro": "Falha na consulta."}
+            except Exception:
+                pass
+        try:
+            return localizar_regiao(**params)
+        except LocalizacaoError as e:
+            return {"erro": e.mensagem}
+
     def get_stats(
         self,
         regioes: Optional[List[str]] = None,

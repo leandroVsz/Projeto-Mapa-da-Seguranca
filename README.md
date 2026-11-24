@@ -219,6 +219,25 @@ python -m db.relatorio_smoke_test
 
 ---
 
+## 📍 Consulta da Região (CEP, endereço ou geolocalização)
+
+Na aba **Mapa Geoespacial**, o painel *"Consultar a região"* descobre a RA do usuário por:
+
+- **Endereço** (texto livre) → geocodificação com Nominatim/OpenStreetMap, restrita ao DF;
+- **CEP** → ViaCEP (logradouro/bairro) + geocodificação;
+- **Minha localização** → GPS do navegador (`streamlit-geolocation`) ou coordenadas digitadas.
+
+O ponto é cruzado com o contorno das RAs no PostGIS (`ST_Intersects`). Sem banco, usa o GeoJSON
+local e, em último caso, o centroide mais próximo (resultado marcado como *aproximado*).
+Ao achar a RA, o painel de detalhe do mapa já mostra os indicadores dela.
+
+```bash
+curl "http://localhost:8000/api/localizar?cep=70040-010"
+curl "http://localhost:8000/api/localizar?endereco=CNB 12 Taguatinga"
+curl "http://localhost:8000/api/localizar?latitude=-15.8202&longitude=-48.1105"
+python -m pytest tests/test_localizacao.py -v   # serviços externos simulados (sem rede)
+```
+
 ## 🗺️ Regiões Administrativas e Dados do DF
 
 O sistema conta com dados e coordenadas representativas das principais Regiões Administrativas do DF:
@@ -249,6 +268,7 @@ O sistema conta com dados e coordenadas representativas das principais Regiões 
 | `GET` | `/api/ocorrencias` | Listagem agregada RA/crime/ano/mês com busca textual |
 | `GET` | `/api/stats` | Indicadores-chave (KPIs) e séries por ano/mês |
 | `GET` | `/api/detalhe-regiao` | KPIs e distribuições de UMA RA (usado ao clicar numa região no mapa) |
+| `GET` | `/api/localizar` | Descobre a RA por `cep`, `endereco` ou `latitude`+`longitude` (retorna RA, coordenadas e método usado) |
 | `POST`| `/api/consolidar` | Executa a unificação de arquivos brutos anuais (ETL) |
 | `POST`| `/api/carga-db` | Carrega o CSV consolidado + contornos no PostgreSQL |
 | `POST`| `/api/relatorios` | Salva a configuração de um gráfico na conta do usuário autenticado (requer `X-Auth-Token`) |
