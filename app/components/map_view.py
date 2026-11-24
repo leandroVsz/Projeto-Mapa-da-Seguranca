@@ -176,9 +176,13 @@ def render_map(
     estilo_mapa: Optional[str] = None,
     top_naturezas: Optional[Dict[str, Any]] = None,
     detalhe_callback=None,
+    ponto_consulta: Optional[Dict[str, Any]] = None,
 ):
     """Renderiza o mapa. Com detalhe_callback, o clique numa RA chama
-    callback(nome_regiao) via on_select do Streamlit."""
+    callback(nome_regiao) via on_select do Streamlit.
+
+    ponto_consulta ({"latitude": .., "longitude": ..}): marca no mapa o local
+    achado pela consulta por CEP/endereço/GPS e dá zoom nele."""
     layers = []
     modo_coropleto = "Coropleto" in tipo_camada
 
@@ -286,6 +290,37 @@ def render_map(
         else:
             lat, lon, zoom = DF_CENTER_LAT, DF_CENTER_LON, 9.5
 
+    # Marcador do local consultado (halo translúcido + ponto vermelho com borda).
+    # Não é "pickable": o clique continua selecionando só as RAs.
+    if ponto_consulta:
+        lat, lon, zoom = ponto_consulta["latitude"], ponto_consulta["longitude"], 13
+        pino = [{"latitude": lat, "longitude": lon}]
+        layers.append(pdk.Layer(
+            "ScatterplotLayer",
+            id="ponto-consulta-halo",
+            data=pino,
+            get_position=["longitude", "latitude"],
+            get_fill_color=[220, 38, 38, 70],
+            get_radius=300,
+            radius_min_pixels=22,
+            radius_max_pixels=40,
+            pickable=False,
+        ))
+        layers.append(pdk.Layer(
+            "ScatterplotLayer",
+            id="ponto-consulta",
+            data=pino,
+            get_position=["longitude", "latitude"],
+            get_fill_color=[220, 38, 38, 255],
+            get_line_color=[255, 255, 255, 255],
+            stroked=True,
+            line_width_min_pixels=3,
+            get_radius=80,
+            radius_min_pixels=9,
+            radius_max_pixels=16,
+            pickable=False,
+        ))
+
     view_state = pdk.ViewState(
         latitude=lat, longitude=lon, zoom=zoom,
         pitch=45 if "3D" in tipo_camada else 0, bearing=0,
@@ -336,3 +371,8 @@ def render_map(
         )
     else:
         st.caption("💡 Arraste para mover; rolagem do mouse aproxima/afasta.")
+    if ponto_consulta:
+        st.caption(
+            "🔴 O **ponto vermelho** é o local encontrado pela consulta (CEP, endereço ou "
+            "localização). Os indicadores continuam por Região Administrativa."
+        )
