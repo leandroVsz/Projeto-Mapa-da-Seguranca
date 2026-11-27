@@ -126,8 +126,13 @@ def _listar_ocorrencias(regioes: tuple, naturezas: tuple, eixos: tuple,
 
 
 def _selecionar_regiao(nome_ra: str):
-    """Callback do clique no mapa: guarda a RA clicada para o painel de detalhe."""
+    """Callback do clique no mapa: aplica a RA clicada ao filtro lateral.
+
+    O painel de detalhe é derivado do filtro (não de um estado paralelo), então
+    basta pedir a troca do filtro — ela acontece no próximo rerun.
+    """
     st.session_state["ra_detalhe"] = nome_ra
+    st.session_state["ra_filtro_pendente"] = nome_ra
 
 # Gate opcional de login via AUTH_REQUIRED=true no .env
 AUTH_REQUIRED = os.getenv("AUTH_REQUIRED", "false").strip().lower() in ("1", "true", "yes", "on")
@@ -167,11 +172,14 @@ opcoes = _opcoes_filtros()
 regioes_meta = _regioes_geo()
 
 # Filtro por Região Administrativa
-# Se a consulta por CEP/endereço/GPS achou uma RA, aplica-a ao filtro ANTES de
-# criar o widget (o Streamlit não permite alterar o valor depois de criado).
-_ra_pendente = st.session_state.pop("ra_filtro_pendente", None)
-if _ra_pendente and _ra_pendente in opcoes.get("regioes", []):
-    st.session_state["filtro_ra"] = [_ra_pendente]
+# Se o clique no mapa ou a consulta por CEP/endereço/GPS escolheu uma RA, ou se
+# o botão "Fechar" do painel de detalhe pediu para limpar (None), aplica-se ao
+# filtro ANTES de criar o widget (o Streamlit não permite alterar o valor depois).
+_SEM_PENDENTE = object()
+_ra_pendente = st.session_state.pop("ra_filtro_pendente", _SEM_PENDENTE)
+if _ra_pendente is not _SEM_PENDENTE:
+    _regioes_validas = opcoes.get("regioes", [])
+    st.session_state["filtro_ra"] = [_ra_pendente] if _ra_pendente in _regioes_validas else []
 
 ra_selecionadas = st.sidebar.multiselect(
     "Região Administrativa (RA)",
@@ -179,6 +187,14 @@ ra_selecionadas = st.sidebar.multiselect(
     key="filtro_ra",
     placeholder="Todas as regiões do DF",
 )
+
+# Toda mudança no filtro de RA invalida a seleção guardada pelo pydeck: sem
+# isso, o mapa continuava devolvendo a RA clicada antes e reabria o painel de
+# detalhe logo depois de fechado. Recriar o mapa (nova key) zera a seleção.
+_filtro_ra_atual = list(ra_selecionadas)
+if st.session_state.get("filtro_ra_anterior") != _filtro_ra_atual:
+    st.session_state["filtro_ra_anterior"] = _filtro_ra_atual
+    st.session_state["mapa_versao"] = st.session_state.get("mapa_versao", 0) + 1
 
 # Filtro por Eixo Indicador (macro-categoria SSP-DF)
 eixos_disponiveis = opcoes.get("eixos", [])
@@ -274,8 +290,10 @@ with tab_mapa:
         ponto_consulta=ponto_consulta,
     )
 
-    # Painel de detalhe da RA clicada no mapa
-    ra_clicada = st.session_state.get("ra_detalhe")
+    # Painel de detalhe da RA: aparece enquanto o filtro lateral tiver exatamente
+    # uma RA (clique no mapa, busca por CEP/endereço ou escolha manual) e fecha
+    # junto com o filtro — "✕ Fechar" simplesmente limpa a seleção de RA.
+    ra_clicada = regiao_foco
     if ra_clicada:
         detalhe = _detalhe_regiao(
             ra_clicada,
@@ -287,7 +305,10 @@ with tab_mapa:
             col_tit, col_fechar = st.columns([0.85, 0.15])
             col_tit.subheader(f"📍 {ra_clicada}")
             if col_fechar.button("✕ Fechar", key="fechar-detalhe-ra", use_container_width=True):
-                del st.session_state["ra_detalhe"]
+                # Fecha o painel E limpa o filtro de RA no próximo rerun (não dá
+                # para alterar o multiselect depois de criado no mesmo run).
+                st.session_state.pop("ra_detalhe", None)
+                st.session_state["ra_filtro_pendente"] = None
                 st.rerun()
 
             total_ra = int(detalhe.get("total_ocorrencias", 0))
@@ -323,7 +344,8 @@ with tab_mapa:
 
             st.caption(
                 f"Valores de **{ra_clicada}** considerando os filtros atuais da barra lateral "
-                "(naturezas, eixos e anos). Clique em outra RA para trocar o detalhe."
+                "(naturezas, eixos e anos). Clique em outra RA para trocar o detalhe; "
+                "**✕ Fechar** remove a RA do filtro lateral."
             )
 
 with tab_graficos:

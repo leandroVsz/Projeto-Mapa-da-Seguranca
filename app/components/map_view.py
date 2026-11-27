@@ -340,7 +340,9 @@ def render_map(
         deck,
         use_container_width=True,
         on_select="rerun" if detalhe_callback else "ignore",
-        key="mapa-df",
+        # A key muda quando o filtro de RA muda (main.py incrementa mapa_versao),
+        # o que descarta a seleção antiga e evita reabrir o card já fechado.
+        key=f"mapa-df-{st.session_state.get('mapa_versao', 0)}",
     )
 
     # Clique numa RA: extrai o nome da feature selecionada
