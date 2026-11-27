@@ -23,7 +23,6 @@ def _mostrar_resultado(res: Dict[str, Any]) -> None:
     if "erro" in res:
         st.error(res["erro"])
         return
-    st.success(f"📍 Você está em **{res['regiao']}**")
     if res.get("endereco_encontrado"):
         st.caption(f"Local encontrado: {res['endereco_encontrado']}")
     st.caption(
